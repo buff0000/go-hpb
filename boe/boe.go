@@ -20,7 +20,72 @@ package boe
 #cgo CFLAGS: -I.
 #cgo LDFLAGS: -L . -lboe
 #include "boe.h"
+#include "aq.h"
+#include <stdlib.h>
+#include <string.h>
 #include <stdio.h>
+
+#define RESULT_QUEUE_LEN (10000)
+#define SIG_LEN (97)
+#define PUB_LEN (64)
+
+typedef struct SResult{
+    unsigned char *sig;
+    unsigned char *pub;
+    unsigned int  flag;
+}SResult;
+
+SResult *rsNew()
+{
+    SResult *ret = (SResult*)malloc(sizeof(SResult));
+    ret->sig = (unsigned char *)malloc(SIG_LEN);
+    ret->pub = (unsigned char *)malloc(PUB_LEN+1);
+    ret->flag = 0;
+    return ret;
+}
+
+void rsFree(SResult *r)
+{
+    if(r)
+    {
+        if(r->pub)
+            free(r->pub);
+        if(r->sig)
+            free(r->sig);
+        free(r);
+    }
+}
+
+static AtomicQ rQueue;
+int initRQ()
+{
+    return aq_init(&rQueue, RESULT_QUEUE_LEN);
+}
+
+int pushResult(SResult *result)
+{
+    AQData* data = aqd_new(sizeof(unsigned char *));
+    data->buf = (unsigned char*)result;
+    return aq_push(&rQueue, data);
+}
+
+SResult* getResult()
+{
+    AQData* data = aq_pop(&rQueue);
+    if(data != NULL)
+    {
+        SResult *ret = (SResult*)data->buf;
+        aqd_free(data);
+        return ret;
+    }
+    return NULL;
+}
+
+int qlen()
+{
+    return aq_len(&rQueue);
+}
+
 int upgrade_call_back_cgo(int progress, char *msg)
 {
     static int lp = 0;
@@ -36,21 +101,38 @@ int upgrade_call_back_cgo(int progress, char *msg)
     return 0;
 }
 
+int recover_pubkey_callback(unsigned char *sig, unsigned char *pub)
+{
+    SResult *r = rsNew();
+    if(sig)
+        memcpy(r->sig, sig, SIG_LEN);
+    if(pub)
+    {
+        r->flag = 0; // ok
+        memcpy(r->pub+1, pub, PUB_LEN);
+        r->pub[0] = 4;
+    }
+    else
+    {
+        r->flag = 1; // timeout
+    }
+    pushResult(r);
+
+    return 0;
+}
+
+
+
 */
 import "C"
 import (
     "unsafe"
     "fmt"
-    "sync/atomic"
+    _"sync/atomic"
+    "time"
 	"github.com/hpb-project/go-hpb/common/log"
-	//"github.com/hpb-project/go-hpb/event"
 	"github.com/hpb-project/go-hpb/common/crypto"
 )
-
-type BoeHandle struct {
-   // boeEvent *event.SyncEvent
-    boeInit  bool
-}
 
 
 type TVersion struct {
@@ -60,25 +142,81 @@ type TVersion struct {
     D int
 }
 
-/*const (
-   // BoeEventBase event.EventType = iota+100
-    BoeEventMax
-)*/
+// result for recover pubkey
+type RecoverPubkey struct {
+    sig []byte 
+    pub []byte
+}
+
+type BoeRecoverPubKeyFunc func (RecoverPubkey)
+
+type BoeHandle struct {
+    boeInit  bool
+    rpFunc   BoeRecoverPubKeyFunc
+}
 
 var (
-    boeRecoverPubTps         = int32(0)
     bcontinue                = false
-    boeHandle                = &BoeHandle{ boeInit:false}
+    boeHandle                = &BoeHandle{ boeInit:false, rpFunc:nil}
 )
 
 func BoeGetInstance() (*BoeHandle) {
     return boeHandle
 }
 
+func cArrayToGoArray(ca unsafe.Pointer, goArray []byte, size int) {
+    p := uintptr(ca)
+    for i:=0; i < size; i++ {
+        j := *(*byte)(unsafe.Pointer(p))
+        goArray[i] = j
+        p += unsafe.Sizeof(j)
+        fmt.Printf("cg[%d]=%02x, ca[%d]=%02x\n", i, goArray[i], i, j)
+    }
+}
+
+
+func PostRecoverPubkey() {
+    var r *C.SResult
+    for {
+        //l := C.qlen()
+        r = C.getResult()
+        if r == nil {
+            log.Info("have no result")
+            time.Sleep(time.Duration(1)*time.Second)
+        }else {
+            log.Info("got result")
+            rs := RecoverPubkey{sig:make([]byte, 97), pub:make([]byte, 65)}
+
+            cArrayToGoArray(unsafe.Pointer(r.sig), rs.sig, len(rs.sig))
+            if r.flag == 0 {
+                pubkey64 := make([]byte, 64)
+                cArrayToGoArray(unsafe.Pointer(r.pub), pubkey64, len(pubkey64))
+                copy(rs.pub[1:], pubkey64)
+                rs.pub[0] = 4
+            }else{
+                var sig = make([]byte, 65)
+                var hash = make([]byte, 32)
+                copy(sig[0:64], rs.sig[0:64])
+                copy(hash[0:32], rs.sig[64:96])
+                sig[64] = rs.sig[96]
+                pub, err := crypto.Ecrecover(hash[:], sig)
+                if(err != nil) {
+                    
+                }
+                copy(rs.pub[:], pub[0:])
+            }
+            if boeHandle.rpFunc != nil {
+                boeHandle.rpFunc(rs)
+            }
+        }
+    }
+}
+
 func (boe *BoeHandle) Init()(error) {
     if boe.boeInit {
         return nil
     }
+    C.initRQ()
 
     ret := C.boe_init()
     if ret == C.BOE_OK {
@@ -86,6 +224,8 @@ func (boe *BoeHandle) Init()(error) {
         bcontinue = true
         return nil
     }
+    go PostRecoverPubkey()
+    
     //fmt.Printf("[boe]Init ecode:%d\r\n", uint32(ret.ecode))
     C.boe_err_free(ret)
     return ErrInitFailed
@@ -103,14 +243,9 @@ func (boe *BoeHandle) Release() (error) {
     return ErrInitFailed
 }
 
-/*func (boe *BoeHandle) SubscribeEvent(event event.EventType) (event.Subscriber,error) {
-    if (event < BoeEventMax) && (event > BoeEventBase) {
-        sub := boe.boeEvent.Subscribe(event)
-        return sub, nil
-    }
-    return nil,ErrUnknownEvent
-}*/
-
+func (boe *BoeHandle) RegisterRecoverPubCallback(call BoeRecoverPubKeyFunc) {
+    boe.rpFunc = call
+}
 
 func (boe *BoeHandle) GetBindAccount()(string, error){
     var acc = make([]byte, 42)
@@ -235,9 +370,31 @@ func (boe *BoeHandle) HW_Auth_Verify(random []byte, hid []byte, cid[]byte, signa
     return false
 }
 
+func (boe *BoeHandle) ASyncValidateSign(hash []byte, r []byte, s []byte, v byte) ([]byte, error) {
+
+    var result = make([]byte, 65)
+    var (
+        m_sig  = make([]byte, 97)
+        c_sig = (*C.uchar)(unsafe.Pointer(&m_sig[0]))
+    )
+    copy(m_sig[32-len(r):32], r)
+    copy(m_sig[64-len(s):64], s)
+    copy(m_sig[96-len(hash):96], hash)
+    m_sig[96] = v
+
+
+    c_ret := C.boe_valid_sign(c_sig, (*C.uchar)(unsafe.Pointer(&result[1])))
+    if c_ret == C.BOE_OK {
+        log.Error("boe async valid sign success")
+        return result,nil
+    }else {
+        log.Error("boe async validate sign failed")
+    }
+    return nil, ErrSignCheckFailed
+}
+
 func (boe *BoeHandle) ValidateSign(hash []byte, r []byte, s []byte, v byte) ([]byte, error) {
 
-    atomic.AddInt32(&boeRecoverPubTps, 1)
     var result = make([]byte, 65)
 
     var (
@@ -253,9 +410,11 @@ func (boe *BoeHandle) ValidateSign(hash []byte, r []byte, s []byte, v byte) ([]b
     c_ret := C.boe_valid_sign(c_sig, (*C.uchar)(unsafe.Pointer(&result[1])))
     //loushl change to debug
     if c_ret == C.BOE_OK {
-    log.Trace("boe validate sign success")
-    result[0] = 4
-    return result,nil
+        log.Error("boe validate sign success")
+        result[0] = 4
+        return result,nil
+    }else {
+        log.Error("boe validate sign timeout")
     }
 
     var (
@@ -269,7 +428,7 @@ func (boe *BoeHandle) ValidateSign(hash []byte, r []byte, s []byte, v byte) ([]b
         return nil, ErrSignCheckFailed
     }
     copy(result[:], pub[0:])
-    log.Trace("software validate sign success")
+    log.Trace("software   validate sign success")
 
     return result, nil
 
