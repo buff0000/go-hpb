@@ -101,7 +101,7 @@ int upgrade_call_back_cgo(int progress, char *msg)
     return 0;
 }
 
-int recover_pubkey_callback(unsigned char *sig, unsigned char *pub)
+int recover_pubkey_callback(unsigned char *pub, unsigned char *sig,void *userdata)
 {
     SResult *r = rsNew();
     if(sig)
@@ -144,11 +144,12 @@ type TVersion struct {
 
 // result for recover pubkey
 type RecoverPubkey struct {
-    sig []byte 
-    pub []byte
+    hash []byte
+    sig  []byte 
+    pub  []byte
 }
 
-type BoeRecoverPubKeyFunc func (RecoverPubkey)
+type BoeRecoverPubKeyFunc func (RecoverPubkey, error)
 
 type BoeHandle struct {
     boeInit  bool
@@ -178,35 +179,38 @@ func cArrayToGoArray(ca unsafe.Pointer, goArray []byte, size int) {
 func PostRecoverPubkey() {
     var r *C.SResult
     for {
+        if !bcontinue {
+            break
+        }
         //l := C.qlen()
+        var err error
         r = C.getResult()
         if r == nil {
             log.Info("have no result")
             time.Sleep(time.Duration(1)*time.Second)
         }else {
+            var fullsig = make([]byte, 97)
             log.Info("got result")
-            rs := RecoverPubkey{sig:make([]byte, 97), pub:make([]byte, 65)}
+            rs := RecoverPubkey{hash:make([]byte, 32), sig:make([]byte, 65), pub:make([]byte, 65)}
 
-            cArrayToGoArray(unsafe.Pointer(r.sig), rs.sig, len(rs.sig))
+            cArrayToGoArray(unsafe.Pointer(r.sig), fullsig, len(fullsig))
             if r.flag == 0 {
                 pubkey64 := make([]byte, 64)
                 cArrayToGoArray(unsafe.Pointer(r.pub), pubkey64, len(pubkey64))
+                copy(rs.sig, fullsig[32:65])
+                copy(rs.hash,fullsig[0:32])
                 copy(rs.pub[1:], pubkey64)
                 rs.pub[0] = 4
             }else{
-                var sig = make([]byte, 65)
-                var hash = make([]byte, 32)
-                copy(sig[0:64], rs.sig[0:64])
-                copy(hash[0:32], rs.sig[64:96])
-                sig[64] = rs.sig[96]
-                pub, err := crypto.Ecrecover(hash[:], sig)
-                if(err != nil) {
-                    
+                copy(rs.hash, fullsig[0:32])
+                copy(rs.sig, fullsig[32:])
+                pub, err := crypto.Ecrecover(rs.hash, rs.sig)
+                if(err == nil) {
+                    copy(rs.pub[:], pub[0:])
                 }
-                copy(rs.pub[:], pub[0:])
             }
             if boeHandle.rpFunc != nil {
-                boeHandle.rpFunc(rs)
+                boeHandle.rpFunc(rs,err)
             }
         }
     }
@@ -222,9 +226,13 @@ func (boe *BoeHandle) Init()(error) {
     if ret == C.BOE_OK {
         boe.boeInit = true
         bcontinue = true
+
+        C.boe_valid_sign_callback((C.BoeValidSignCallback)(unsafe.Pointer(C.recover_pubkey_callback)))
+        go PostRecoverPubkey()
+
         return nil
     }
-    go PostRecoverPubkey()
+
     
     //fmt.Printf("[boe]Init ecode:%d\r\n", uint32(ret.ecode))
     C.boe_err_free(ret)
@@ -370,9 +378,8 @@ func (boe *BoeHandle) HW_Auth_Verify(random []byte, hid []byte, cid[]byte, signa
     return false
 }
 
-func (boe *BoeHandle) ASyncValidateSign(hash []byte, r []byte, s []byte, v byte) ([]byte, error) {
+func (boe *BoeHandle) ASyncValidateSign(hash []byte, r []byte, s []byte, v byte) (error) {
 
-    var result = make([]byte, 65)
     var (
         m_sig  = make([]byte, 97)
         c_sig = (*C.uchar)(unsafe.Pointer(&m_sig[0]))
@@ -382,15 +389,14 @@ func (boe *BoeHandle) ASyncValidateSign(hash []byte, r []byte, s []byte, v byte)
     copy(m_sig[96-len(hash):96], hash)
     m_sig[96] = v
 
-
-    c_ret := C.boe_valid_sign(c_sig, (*C.uchar)(unsafe.Pointer(&result[1])))
+    c_ret := C.boe_valid_sign_recover_pub_async(c_sig)
     if c_ret == C.BOE_OK {
         log.Error("boe async valid sign success")
-        return result,nil
+        return nil
     }else {
         log.Error("boe async validate sign failed")
     }
-    return nil, ErrSignCheckFailed
+    return ErrSignCheckFailed
 }
 
 func (boe *BoeHandle) ValidateSign(hash []byte, r []byte, s []byte, v byte) ([]byte, error) {
