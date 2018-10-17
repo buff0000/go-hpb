@@ -144,9 +144,9 @@ type TVersion struct {
 
 // result for recover pubkey
 type RecoverPubkey struct {
-    hash []byte
-    sig  []byte 
-    pub  []byte
+    Hash []byte
+    Sig  []byte
+    Pub  []byte
 }
 
 type BoeRecoverPubKeyFunc func (RecoverPubkey, error)
@@ -191,22 +191,22 @@ func PostRecoverPubkey() {
         }else {
             var fullsig = make([]byte, 97)
             log.Info("got result")
-            rs := RecoverPubkey{hash:make([]byte, 32), sig:make([]byte, 65), pub:make([]byte, 65)}
+            rs := RecoverPubkey{Hash:make([]byte, 32), Sig:make([]byte, 65), Pub:make([]byte, 65)}
 
             cArrayToGoArray(unsafe.Pointer(r.sig), fullsig, len(fullsig))
             if r.flag == 0 {
                 pubkey64 := make([]byte, 64)
                 cArrayToGoArray(unsafe.Pointer(r.pub), pubkey64, len(pubkey64))
-                copy(rs.sig, fullsig[32:65])
-                copy(rs.hash,fullsig[0:32])
-                copy(rs.pub[1:], pubkey64)
-                rs.pub[0] = 4
+                copy(rs.Sig, fullsig[32:65])
+                copy(rs.Hash,fullsig[0:32])
+                copy(rs.Pub[1:], pubkey64)
+                rs.Pub[0] = 4
             }else{
-                copy(rs.hash, fullsig[0:32])
-                copy(rs.sig, fullsig[32:])
-                pub, err := crypto.Ecrecover(rs.hash, rs.sig)
+                copy(rs.Hash, fullsig[0:32])
+                copy(rs.Sig, fullsig[32:])
+                pub, err := crypto.Ecrecover(rs.Hash, rs.Sig)
                 if(err == nil) {
-                    copy(rs.pub[:], pub[0:])
+                    copy(rs.Pub[:], pub[0:])
                 }
             }
             if boeHandle.rpFunc != nil {
