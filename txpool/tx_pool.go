@@ -298,8 +298,12 @@ func (pool *TxPool) reset(oldHead, newHead *types.Header) {
 	pool.pendingState = state.ManageState(statedb)
 	pool.currentMaxGas = newHead.GasLimit
 
+	//batch TxsAsynSender
+	go pool.goTxsAsynSender(reinject)
+
 	// Inject any transactions discarded due to reorgs
 	log.Debug("Reinjecting stale transactions", "count", len(reinject))
+
 	pool.addTxsLocked(reinject)
 
 	// validate the pool of pending transactions, this will remove
@@ -337,11 +341,22 @@ func (pool *TxPool) validateTx(tx *types.Transaction) error {
 		return ErrGasLimit
 	}
 	// Call BOE recover sender.
-	from, err := types.Sender(pool.signer, tx)
+
+	from, err := types.ASynSender(pool.signer, tx)
 	if err != nil {
-		log.Trace("ErrInvalidSender", "ErrInvalidSender",ErrInvalidSender)
-		return ErrInvalidSender
+		log.Trace("ErrInvalid  ASynSender", "ErrInvalidSender",ErrInvalidSender)
+		//var from2 common.Address
+		from2, err := types.Sender(pool.signer, tx)
+
+		if err != nil {
+			log.Trace("ErrInvalidSender", "ErrInvalidSender",ErrInvalidSender)
+			return ErrInvalidSender
+		}
+
+		copy(from[1:],from2[1:])
+
 	}
+
 	// Check gasPrice.
 	if pool.gasPrice.Cmp(tx.GasPrice()) > 0 {
 		log.Trace("ErrUnderpriced", "ErrUnderpriced",ErrUnderpriced)
@@ -416,7 +431,7 @@ func (pool *TxPool) addTxsLocked(txs []*types.Transaction) error {
 	for _, tx := range txs {
 		if replace, err := pool.add(tx); err == nil {
 			if !replace {
-				from, _ := types.Sender(pool.signer, tx) // already validated
+				from, _ := types.ASynSender(pool.signer, tx) // already validated
 				dirty[from] = struct{}{}
 			}
 		}
@@ -436,6 +451,14 @@ func (pool *TxPool) addTxsLocked(txs []*types.Transaction) error {
 
 	return nil
 }
+// addTxsLocked attempts to queue a batch of transactions if they are valid,
+// whilst assuming the transaction pool lock is already held.
+func (pool *TxPool) goTxsAsynSender(txs []*types.Transaction) error {
+	for _, tx := range txs {
+		types.ASynSender(pool.signer, tx) // already ASynSender
+	}
+	return nil
+}
 
 // addTx enqueues a single transaction into the pool if it is valid.
 func (pool *TxPool) addTxLocked(tx *types.Transaction) error {
@@ -446,7 +469,7 @@ func (pool *TxPool) addTxLocked(tx *types.Transaction) error {
 	}
 	// If we added a new transaction, run promotion checks and return
 	if !replace {
-		from, _ := types.Sender(pool.signer, tx) // already validated
+		from, _ := types.ASynSender(pool.signer, tx) // already validated
 		pool.promoteExecutables([]common.Address{from})
 	}
 	return nil
@@ -463,7 +486,7 @@ func (pool *TxPool) addTxLocked(tx *types.Transaction) error {
 func (pool *TxPool) add(tx *types.Transaction) (bool, error) {
 	// If the transaction is already known, discard it
 	hash := tx.Hash()
-	from, _ := types.Sender(pool.signer, tx) // already validated
+	from, _ := types.ASynSender(pool.signer, tx) // already validated
 
 	// If the transaction pool is full, reject
 	if uint64(len(pool.all)) >= pool.config.GlobalSlots+pool.config.GlobalQueue {
@@ -509,7 +532,7 @@ func (pool *TxPool) add(tx *types.Transaction) (bool, error) {
 // Note, this method assumes the pool lock is held!
 func (pool *TxPool) enqueueTx(hash common.Hash, tx *types.Transaction) (bool, error) {
 	// Try to insert the transaction into the future queue
-	from, _ := types.Sender(pool.signer, tx) // already validated
+	from, _ := types.ASynSender(pool.signer, tx) // already validated
 	if pool.queue[from] == nil {
 		pool.queue[from] = newTxList(false)
 	}
