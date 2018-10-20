@@ -344,12 +344,12 @@ func (pool *TxPool) validateTx(tx *types.Transaction) error {
 
 	from, err := types.ASynSender(pool.signer, tx)
 	if err != nil {
-		log.Trace("ErrInvalid  ASynSender", "ErrInvalidSender",ErrInvalidSender)
+		log.Info("validateTx ErrInvalid  ASynSender", "ErrInvalidSender",ErrInvalidSender)
 		//var from2 common.Address
 		from2, err := types.Sender(pool.signer, tx)
 
 		if err != nil {
-			log.Trace("ErrInvalidSender", "ErrInvalidSender",ErrInvalidSender)
+			log.Info("validateTx Sender ErrInvalidSender", "ErrInvalidSender",ErrInvalidSender)
 			return ErrInvalidSender
 		}
 
@@ -426,12 +426,21 @@ func (pool *TxPool) AddTx(tx *types.Transaction) error {
 // whilst assuming the transaction pool lock is already held.
 func (pool *TxPool) addTxsLocked(txs []*types.Transaction) error {
 	// Add the batch of transaction, tracking the accepted ones
-
 	dirty := make(map[common.Address]struct{})
 	for _, tx := range txs {
 		if replace, err := pool.add(tx); err == nil {
 			if !replace {
-				from, _ := types.ASynSender(pool.signer, tx) // already validated
+				from, err := types.ASynSender(pool.signer, tx) // already validated
+				if err != nil{
+					log.Info("addTxsLocked ASynSender Error")
+
+					from2, err := types.Sender(pool.signer, tx) // already validated
+					if err != nil{
+						log.Info("addTxsLocked Sender Error")
+					}
+
+					copy(from[1:], from2[1:])
+				}
 				dirty[from] = struct{}{}
 			}
 		}
@@ -469,7 +478,16 @@ func (pool *TxPool) addTxLocked(tx *types.Transaction) error {
 	}
 	// If we added a new transaction, run promotion checks and return
 	if !replace {
-		from, _ := types.ASynSender(pool.signer, tx) // already validated
+		from, err := types.ASynSender(pool.signer, tx) // already validated
+		if err != nil {
+			log.Info("addTxLocked ASynSender Error")
+			from2, err := types.Sender(pool.signer, tx) // already validated
+			if err != nil {
+				log.Info("addTxLocked Sender Error")
+			}
+			copy(from[1:],from2[1:])
+		}
+
 		pool.promoteExecutables([]common.Address{from})
 	}
 	return nil
@@ -486,7 +504,15 @@ func (pool *TxPool) addTxLocked(tx *types.Transaction) error {
 func (pool *TxPool) add(tx *types.Transaction) (bool, error) {
 	// If the transaction is already known, discard it
 	hash := tx.Hash()
-	from, _ := types.ASynSender(pool.signer, tx) // already validated
+	from, err := types.ASynSender(pool.signer, tx) // already validated
+	if err != nil{
+		log.Info("add ASynSender error")
+		from2, err := types.Sender(pool.signer, tx) // already validated
+		if err !=nil{
+			log.Info("add Sender error")
+		}
+		copy(from[1:],from2[1:])
+	}
 
 	// If the transaction pool is full, reject
 	if uint64(len(pool.all)) >= pool.config.GlobalSlots+pool.config.GlobalQueue {
@@ -532,7 +558,16 @@ func (pool *TxPool) add(tx *types.Transaction) (bool, error) {
 // Note, this method assumes the pool lock is held!
 func (pool *TxPool) enqueueTx(hash common.Hash, tx *types.Transaction) (bool, error) {
 	// Try to insert the transaction into the future queue
-	from, _ := types.ASynSender(pool.signer, tx) // already validated
+	from, err := types.ASynSender(pool.signer, tx) // already validated
+	if err != nil{
+		log.Info("enqueueTx ASynSender error")
+		from2, err := types.Sender(pool.signer, tx) // already validated
+		if err != nil{
+			log.Info("enqueueTx Sender error")
+		}
+		copy(from[1:],from2[1:])
+	}
+
 	if pool.queue[from] == nil {
 		pool.queue[from] = newTxList(false)
 	}
