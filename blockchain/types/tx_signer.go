@@ -94,7 +94,10 @@ func ASynSender(signer Signer, tx *Transaction) (common.Address, error) {
 	var comhash common.Hash
 	comhash = tx.Hash()
 
-	if sc := Asynsinger[comhash].Load(); sc != nil {
+	var kmap atomic.Value
+	kmap = Asynsinger[comhash]
+
+	if sc := kmap.Load() ; sc != nil {
 		sigCache := sc.(sigCache)
 		// If the signer used to derive from in a previous
 		// call is not the same as used current, invalidate
@@ -104,7 +107,9 @@ func ASynSender(signer Signer, tx *Transaction) (common.Address, error) {
 		}
 	}
 
-	Asynsinger[comhash].Store(sigCache{signer: signer, from: common.Address{}})
+	kmap.Store(sigCache{signer: signer, from: common.Address{}})
+	Asynsinger[comhash] = kmap
+	//Asynsinger[comhash].Store(sigCache{signer: signer, from: common.Address{}})
 
 	addr, err := signer.ASynSender(tx)
 	if err != nil {
@@ -325,12 +330,24 @@ func boecallback(rs boe.RecoverPubkey,err error) {
 
 	var signertmp Signer
 
-	if sc := Asynsinger[comhash].Load(); sc != nil {
+	var ak ,akt atomic.Value
+
+	ak = Asynsinger[comhash]
+	if sc := ak.Load(); sc != nil {
 		sigcache := sc.(sigCache)
 		signertmp = sigcache.signer
 	}
-	Asynsinger[comhash].Store(sigCache{signer: signertmp, from: addr})
-	Beoreckey[comhash].Store(boe.RecoverPubkey{rs.Hash,rs.Sig,rs.Pub})
+
+	ak.Store(sigCache{signer: signertmp, from: addr})
+
+	Asynsinger[comhash]=ak
+
+	akt = Beoreckey[comhash]
+
+	akt.Store(boe.RecoverPubkey{rs.Hash,rs.Sig,rs.Pub})
+
+	Beoreckey[comhash] = akt
+	//Asynsinger[comhash].Store(sigCache{signer: signertmp, from: addr})
 	//beoreckey.Store(rs)
 	log.Trace("boe boecallback Store success")
 
