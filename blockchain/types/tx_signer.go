@@ -28,6 +28,7 @@ import (
 	"github.com/hpb-project/go-hpb/boe"
 	"github.com/hpb-project/go-hpb/common/log"
 	"sync/atomic"
+	"sync"
 )
 
 var (
@@ -41,8 +42,27 @@ type sigCache struct {
 	from   common.Address
 }
 
-var Asynsinger  map[common.Hash]atomic.Value
-var Beoreckey   map[common.Hash]atomic.Value
+type Smap struct {
+	Data map[common.Hash]atomic.Value
+	L sync.RWMutex
+}
+
+var Asynsinger = make(Smap{Data:make(map[common.Hash]atomic.Value)})
+var Beoreckey = make(Smap{Data:make(map[common.Hash]atomic.Value)})
+
+func SMapGet(m Smap, khash common.Hash) atomic.Value {
+	m.L.RLock()
+	defer m.L.RUnlock()
+	return m.Data[khash]
+}
+
+func SMapSet(m Smap, khash common.Hash,katomic atomic.Value)  {
+	m.L.Lock()
+	defer m.L.Unlock()
+	m.Data[khash]=katomic
+}
+//var Asynsinger = make(map[common.Hash]atomic.Value)
+//var Beoreckey  = make(map[common.Hash]atomic.Value)
 
 // MakeSigner returns a Signer based on the given chain config and block number.
 func MakeSigner(config *config.ChainConfig) Signer {
@@ -98,11 +118,13 @@ func ASynSender(signer Signer, tx *Transaction) (common.Address, error) {
 	kmap = Asynsinger[comhash]
 
 	if sc := kmap.Load() ; sc != nil {
+		log.Trace("kmap.Load() OK OK OK")
 		sigCache := sc.(sigCache)
 		// If the signer used to derive from in a previous
 		// call is not the same as used current, invalidate
 		// the cache.2
-		if sigCache.signer.Equal(signer) {
+		if sigCache.signer.Equal(signer) && sigCache.from.String() != "0x0000000000000000000000000000000000000000"{
+			log.Info(" sigCache.signer.Equal(signer)  OK OK OK","from",sigCache.from)
 			return sigCache.from, nil
 		}
 	}
@@ -174,12 +196,15 @@ func (s BoeSigner) ASynSender(tx *Transaction) (common.Address, error) {
 	if !tx.Protected() {
 		//return HomesteadSigner{}.Sender(tx)
 		//TODO transaction can be unprotected ?
+		log.Info("!tx.Protected() 11111111111111111111111111")
 	}
 	if tx.ChainId().Cmp(s.chainId) != 0 {
+		log.Info("tx.ChainId().Cmp(s.chainId) != 22222222222222222222222222")
 		return common.Address{}, ErrInvalidChainId
 	}
 	V := new(big.Int).Sub(tx.data.V, s.chainIdMul)
 	V.Sub(V, big8)
+	log.Info("ASynSender ASynrecoverPlain begin hanxiaole")
 	return ASynrecoverPlain(s.Hash(tx), tx.data.R, tx.data.S, V)
 }
 // WithSignature returns a new transaction with the given signature. This signature
@@ -278,17 +303,19 @@ func recoverPlain(sighash common.Hash, R, S, Vb *big.Int) (common.Address, error
 func ASynrecoverPlain(sighash common.Hash, R, S, Vb *big.Int) (common.Address, error) {
 
 	if Vb.BitLen() > 8 {
+		log.Info("Vb.BitLen() > 8 111111111111111111111")
 		return common.Address{}, ErrInvalidSig
 	}
 	V := byte(Vb.Uint64() - 27)
 	if !crypto.ValidateSignatureValues(V, R, S, true) {
+		log.Info("!crypto.ValidateSignatureValues 22222222222222222222222222222")
 		return common.Address{}, ErrInvalidSig
 	}
 	r, s := R.Bytes(), S.Bytes()
 
 	err := boe.BoeGetInstance().ASyncValidateSign(sighash.Bytes(), r, s, V)
 	if err != nil {
-		log.Trace("boe validatesign error")
+		log.Error("boe validatesign error 3333333333333333333333333333")
 		return common.Address{}, err
 	}
 
@@ -310,23 +337,20 @@ func deriveChainId(v *big.Int) *big.Int {
 
 func boecallback(rs boe.RecoverPubkey,err error) {
 	if err != nil {
-		log.Trace("boe validatesign error")
+		log.Info("boe validatesign error")
 	}
 	if len(rs.Pub) == 0 || rs.Pub[0] != 4 {
-		log.Trace("invalid public key")
+		log.Info("invalid public key")
 	}
 
 	var addr common.Address
 	copy(addr[:], crypto.Keccak256(rs.Pub[1:])[12:])
 
 	var sigtmp []byte
-	copy(sigtmp[:], crypto.Keccak256(rs.Sig[1:]))
-
-	var sighash []byte
-	copy(sighash[:], crypto.Keccak256(rs.Hash[1:]))
+	copy(sigtmp[:], crypto.Keccak256(rs.Sig[0:])[0:])
 
 	var  comhash common.Hash
-	copy(comhash[:], crypto.Keccak256(rs.Hash[1:]))
+	copy(comhash[:], crypto.Keccak256(rs.Hash[0:])[0:])
 
 	var signertmp Signer
 
@@ -334,6 +358,7 @@ func boecallback(rs boe.RecoverPubkey,err error) {
 
 	ak = Asynsinger[comhash]
 	if sc := ak.Load(); sc != nil {
+		log.Info("ak.Load()2222222222 hanxiaole 22222222222222222222222","comhash",comhash,"addr",addr)
 		sigcache := sc.(sigCache)
 		signertmp = sigcache.signer
 	}
@@ -349,7 +374,7 @@ func boecallback(rs boe.RecoverPubkey,err error) {
 	Beoreckey[comhash] = akt
 	//Asynsinger[comhash].Store(sigCache{signer: signertmp, from: addr})
 	//beoreckey.Store(rs)
-	log.Trace("boe boecallback Store success")
+	log.Trace("boe boecallback Store success","hash",comhash,"addr",addr,"sigtmp",sigtmp)
 
 	//sigCache{signer: rs.Sig, from: addr}
 
