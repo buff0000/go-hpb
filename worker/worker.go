@@ -300,7 +300,14 @@ func (self *worker) eventListener() {
 			// Apply transaction to the pending state if we're not mining
 			if atomic.LoadInt32(&self.mining) == 0 {
 				self.currentMu.Lock()
-				acc, _ := types.Sender(self.current.signer, ev.Tx)
+				log.Info("self.txCh hanxiaole test ","tx.hash",ev.Tx.Hash())
+                log.Info("self.current","self.current",self.current)
+				log.Info("self.current","self.current",self.current.signer)
+
+				acc, err := types.Sender(self.current.signer, ev.Tx)
+				if err !=nil || acc.String() == "0x0000000000000000000000000000000000000000"{
+					log.Info("self.txCh hanxiaole test ","tx.hash",ev.Tx.Hash(),"addr",acc)
+				}
 				txs := map[common.Address]types.Transactions{acc: {ev.Tx}}
 				txset := types.NewTransactionsByPriceAndNonce(self.current.signer, txs)
 
@@ -547,7 +554,10 @@ func (env *Work) commitTransactions(mux *sub.TypeMux, txs *types.TransactionsByP
 		// during transaction acceptance is the transaction pool.
 		//
 		// We use the eip155 signer regardless of the current hf.
-		from, _ := types.Sender(env.signer, tx)
+		from, errSender := types.Sender(env.signer, tx)
+		if errSender != nil {
+			log.Info("worker commitTransactions ErrInvalidSender", "from.Hash()",from.Hash())
+		}
 		// Check whether the tx is replay protected. If we're not in the EIP155 hf
 		// phase, start ignoring the sender until we do.
 		//TODO why tx is protected

@@ -75,6 +75,7 @@ SResult* getResult()
     if(data != NULL)
     {
         SResult *ret = (SResult*)data->buf;
+        data->buf = 0;
         aqd_free(data);
         return ret;
     }
@@ -101,13 +102,29 @@ int upgrade_call_back_cgo(int progress, char *msg)
     return 0;
 }
 
+static void hex_dump(unsigned char * data, int len)
+{
+    printf("0x");
+    for(int i = 0; i < len; i++)
+        printf("%02x", data[i]);
+
+    printf("\n");
+}
+
 int recover_pubkey_callback(unsigned char *pub, unsigned char *sig,void *userdata)
 {
     SResult *r = rsNew();
     if(sig)
+    {
+        printf("%s: sig ", "recover_pubkey_callback");
+        hex_dump(sig, SIG_LEN);
         memcpy(r->sig, sig, SIG_LEN);
+    }
     if(pub)
     {
+        printf("%s: pub ", "recover_pubkey_callback");
+        hex_dump(pub, PUB_LEN);
+
         r->flag = 0; // ok
         memcpy(r->pub+1, pub, PUB_LEN);
         r->pub[0] = 4;
@@ -132,6 +149,7 @@ import (
     "time"
 	"github.com/hpb-project/go-hpb/common/log"
 	"github.com/hpb-project/go-hpb/common/crypto"
+    "encoding/hex"
 )
 
 
@@ -171,7 +189,7 @@ func cArrayToGoArray(ca unsafe.Pointer, goArray []byte, size int) {
         j := *(*byte)(unsafe.Pointer(p))
         goArray[i] = j
         p += unsafe.Sizeof(j)
-        fmt.Printf("cg[%d]=%02x, ca[%d]=%02x\n", i, goArray[i], i, j)
+        //fmt.Printf("cg[%d]=%02x, ca[%d]=%02x\n", i, goArray[i], i, j)
     }
 }
 
@@ -190,18 +208,21 @@ func PostRecoverPubkey() {
             time.Sleep(time.Duration(1)*time.Second)
         }else {
             var fullsig = make([]byte, 97)
-            log.Info("got result")
+
             rs := RecoverPubkey{Hash:make([]byte, 32), Sig:make([]byte, 65), Pub:make([]byte, 65)}
 
             cArrayToGoArray(unsafe.Pointer(r.sig), fullsig, len(fullsig))
+            log.Info("got result", "fullsig:", hex.EncodeToString(fullsig))
             if r.flag == 0 {
+                log.Error("boe async callback recover pubkey success.")
                 pubkey64 := make([]byte, 64)
                 cArrayToGoArray(unsafe.Pointer(r.pub), pubkey64, len(pubkey64))
-                copy(rs.Sig, fullsig[32:65])
+                copy(rs.Sig, fullsig[32:])
                 copy(rs.Hash,fullsig[0:32])
                 copy(rs.Pub[1:], pubkey64)
                 rs.Pub[0] = 4
             }else{
+                log.Error("boe async callback recover pubkey failed, and goto soft recover.")
                 copy(rs.Hash, fullsig[0:32])
                 copy(rs.Sig, fullsig[32:])
                 pub, err := crypto.Ecrecover(rs.Hash, rs.Sig)
@@ -384,17 +405,20 @@ func (boe *BoeHandle) ASyncValidateSign(hash []byte, r []byte, s []byte, v byte)
         m_sig  = make([]byte, 97)
         c_sig = (*C.uchar)(unsafe.Pointer(&m_sig[0]))
     )
+
     copy(m_sig[32-len(r):32], r)
     copy(m_sig[64-len(s):64], s)
     copy(m_sig[96-len(hash):96], hash)
     m_sig[96] = v
-
+    log.Info("boe asyncValidateSign  sig: ", hex.EncodeToString(m_sig))
+    //log.Info("ASyncValidateSign hanxiaole test 111111111111111111111")
     c_ret := C.boe_valid_sign_recover_pub_async(c_sig)
     if c_ret == C.BOE_OK {
         log.Error("boe async valid sign success")
         return nil
     }else {
         log.Error("boe async validate sign failed")
+        fmt.Printf("error code = %d.\n", uint32(c_ret.ecode));
     }
     return ErrSignCheckFailed
 }
@@ -412,7 +436,7 @@ func (boe *BoeHandle) ValidateSign(hash []byte, r []byte, s []byte, v byte) ([]b
     copy(m_sig[96-len(hash):96], hash)
     m_sig[96] = v
 
-
+    log.Info("boe ----- syncValidateSign  sig: ", hex.EncodeToString(m_sig))
     c_ret := C.boe_valid_sign(c_sig, (*C.uchar)(unsafe.Pointer(&result[1])))
     //loushl change to debug
     if c_ret == C.BOE_OK {
