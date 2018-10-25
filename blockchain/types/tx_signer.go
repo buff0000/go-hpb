@@ -117,7 +117,7 @@ func ASynSender(signer Signer, tx *Transaction) (common.Address, error) {
 		// If the signer used to derive from in a previous
 		// call is not the same as used current, invalidate
 		// the cache.2
-		if sigCache.signer.Equal(signer) {
+		if sigCache.signer.Equal(signer) && sigCache.from.String() != "0x0000000000000000000000000000000000000000"{
 			return sigCache.from, nil
 		}
 	}
