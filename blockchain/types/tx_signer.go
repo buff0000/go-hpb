@@ -28,6 +28,7 @@ import (
 	"github.com/hpb-project/go-hpb/boe"
 	"github.com/hpb-project/go-hpb/common/log"
 	"sync"
+	"encoding/hex"
 )
 
 var (
@@ -118,13 +119,14 @@ func ASynSender(signer Signer, tx *Transaction) (common.Address, error) {
 		// call is not the same as used current, invalidate
 		// the cache.2
 		if sigCache.signer.Equal(signer) && sigCache.from.String() != "0x0000000000000000000000000000000000000000"{
+			log.Info("hanxiaole test ASynSender reASyn Load OKOKOK ","common.Address",sigCache.from,"comhash",tx.Hash())
 			return sigCache.from, nil
 		}
 	}
 	log.Info("hanxiaole ASynSender222222222222","comhash",tx.Hash())
 	kk := SMapGet(Asynsinger,tx.Hash())
 	if len(kk.String()) > 1 && kk.String() != "0x0000000000000000000000000000000000000000"{
-		log.Info("hanxiaole test ASynSender reASyn OKOKOK ","common.Address",kk,"comhash",tx.Hash())
+		log.Info("hanxiaole test ASynSender reASyn SMapGet OKOKOK ","common.Address",kk,"comhash",tx.Hash())
 		tx.from.Store(sigCache{signer: signer, from: kk})
 		return kk,nil
 	}
@@ -340,55 +342,17 @@ func boecallback(rs boe.RecoverPubkey,err error) {
 		log.Trace("invalid public key")
 	}
 
-
-	var addr common.Address
+	var addr = common.Address{}
 	copy(addr[:], crypto.Keccak256(rs.Pub[1:])[12:])
 
 	var sigtmp []byte
-	copy(sigtmp[:], crypto.Keccak256(rs.Sig[0:])[0:])
-	log.Info("========================================= length", "rs.sig.len",len(rs.Sig),"rs.sig",rs.Sig)
-	/*
-		var sighash []byte
-		copy(sighash[:], crypto.Keccak256(rs.Hash[0:]))
-	*/
+	copy(sigtmp[:], rs.Sig[0:])
+
 	var  comhash common.Hash
-	copy(comhash[:], crypto.Keccak256(rs.Hash[0:])[0:])
+	copy(comhash[:], rs.Hash[0:])
 
-	/*
-	var signertmp Signer
-
-	var ak ,akt atomic.Value
-
-	ak = Asynsinger[comhash]
-	if sc := ak.Load(); sc != nil {
-		sigcache := sc.(sigCache)
-		signertmp = sigcache.signer
-	}
-
-	ak.Store(sigCache{signer: signertmp, from: addr})
-
-	Asynsinger[comhash]=ak
-
-	akt = Beoreckey[comhash]
-
-	akt.Store(boe.RecoverPubkey{rs.Hash,rs.Sig,rs.Pub})
-
-	Beoreckey[comhash] = akt
-	*/
-
-	/*
-	Asynsinger[comhash] = common.Address{}
-	copy(Asynsinger[comhash][:],common.Address{}[:])
-	*/
 	SMapSet(Asynsinger,comhash,addr)
 
-	//SMapSet(Beoreckey,comhash,addr)
-	//Asynsinger[comhash] = addr
-	//Beoreckey[comhash] = addr
-	//Asynsinger[comhash].Store(sigCache{signer: signertmp, from: addr})
-	//beoreckey.Store(rs)
-	log.Trace("boe boecallback Store success")
-	log.Info("boe boecallback hanxiaole Store success","hash",comhash,"sigtmp",sigtmp,"addr",addr)
-	//sigCache{signer: rs.Sig, from: addr}
+	log.Info("boe boecallback hanxiaole Store success","hash",comhash,"sigtmp",hex.EncodeToString(sigtmp),"addr",addr)
 
 }
