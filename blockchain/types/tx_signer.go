@@ -111,8 +111,15 @@ func Sender(signer Signer, tx *Transaction) (common.Address, error) {
 }
 func ASynSender(signer Signer, tx *Transaction) (common.Address, error) {
 
-	log.Info("hanxiaole ASynSender11111111111","comhash",tx.Hash())
+	log.Info("hanxiaole SMapGet(Asynsinger,tx.Hash()","comhash",tx.Hash())
+	kk := SMapGet(Asynsinger,tx.Hash())
+	if len(kk.String()) > 1 && kk.String() != "0x0000000000000000000000000000000000000000"{
+		log.Info("hanxiaole test ASynSender reASyn SMapGet OKOKOK ","common.Address",kk,"comhash",tx.Hash())
+		tx.from.Store(sigCache{signer: signer, from: kk})
+		return kk,nil
+	}
 
+	log.Info("hanxiaole tx.from.Load()","comhash",tx.Hash())
 	if sc := tx.from.Load(); sc != nil {
 		sigCache := sc.(sigCache)
 		// If the signer used to derive from in a previous
@@ -122,13 +129,6 @@ func ASynSender(signer Signer, tx *Transaction) (common.Address, error) {
 			log.Info("hanxiaole test ASynSender reASyn Load OKOKOK ","common.Address",sigCache.from,"comhash",tx.Hash())
 			return sigCache.from, nil
 		}
-	}
-	log.Info("hanxiaole ASynSender222222222222","comhash",tx.Hash())
-	kk := SMapGet(Asynsinger,tx.Hash())
-	if len(kk.String()) > 1 && kk.String() != "0x0000000000000000000000000000000000000000"{
-		log.Info("hanxiaole test ASynSender reASyn SMapGet OKOKOK ","common.Address",kk,"comhash",tx.Hash())
-		tx.from.Store(sigCache{signer: signer, from: kk})
-		return kk,nil
 	}
 
 	addr, err := signer.ASynSender(tx)
