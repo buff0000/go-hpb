@@ -467,11 +467,14 @@ func (pool *TxPool) addTxsLocked(txs []*types.Transaction) error {
 func (pool *TxPool) goTxsAsynSender(txs []*types.Transaction) error {
 	for _, tx := range txs {
 		log.Info("goTxsAsynSender ASynSender hanxiaole test ","tx.hash",tx.Hash())
+		types.ASynSender(pool.signer, tx) // already ASynSender
+		/*
 		_,err := types.ASynSender(pool.signer, tx) // already ASynSender
 		if err != nil{
 			log.Info("goTxsAsynSender Sender hanxiaole test ","tx.hash",tx.Hash())
 			types.Sender(pool.signer, tx) // already Sender validated
 		}
+		*/
 	}
 	return nil
 }
