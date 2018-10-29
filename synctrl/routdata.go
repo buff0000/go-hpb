@@ -52,7 +52,6 @@ func routBlock(block *types.Block, propagate bool) {
 				switch peer.RemoteType() {
 				case discover.PreNode:
 					sendNewBlock(peer, block, td)
-					//sendNewHashBlock(peer, block, td)
 					break
 				case discover.SynNode:
 					sendNewBlock(peer, block, td)
@@ -65,11 +64,9 @@ func routBlock(block *types.Block, propagate bool) {
 				switch peer.RemoteType() {
 				case discover.PreNode:
 					sendNewBlock(peer, block, td)
-					//sendNewHashBlock(peer, block, td)
 					break
 				case discover.HpNode:
 					sendNewBlock(peer, block, td)
-					//sendNewHashBlock(peer, block, td)
 					break
 				case discover.SynNode:
 					//ONLY FOR TEST
@@ -130,45 +127,82 @@ func routBlock(block *types.Block, propagate bool) {
 func routTx(hash common.Hash, tx *types.Transaction) {
 	// Broadcast transaction to a batch of peers not knowing about it
 	peers := p2p.PeerMgrInst().PeersWithoutTx(hash)
-	for _, peer := range peers {
-		switch peer.LocalType() {
-		case discover.PreNode:
+	if len(peers) == 0 { return }
+
+	switch p2p.PeerMgrInst().GetLocalType() {
+	case discover.HpNode:
+		//for _, peer := range peers[:int(math.Sqrt(float64(len(peers))))] {
+		//	switch peer.RemoteType() {
+		//	case discover.HpNode:
+		//		sendTransactions(peer, types.Transactions{tx})
+		//		break
+		//	}
+		//
+		//	break
+		//}
+		break
+	case discover.PreNode:
+		for _, peer := range peers {
 			switch peer.RemoteType() {
-			case discover.PreNode:
-				sendTransactions(peer, types.Transactions{tx})
-				break
 			case discover.HpNode:
 				sendTransactions(peer, types.Transactions{tx})
 				break
-			default:
-				break
 			}
-			break
-		case discover.HpNode:
-			switch peer.RemoteType() {
-			case discover.HpNode:
-				sendTransactions(peer, types.Transactions{tx})
-				break
-			default:
-				break
-			}
-			break
-		case discover.SynNode:
-			switch peer.RemoteType() {
-			case discover.PreNode:
-				sendTransactions(peer, types.Transactions{tx})
-				break
-			case discover.HpNode:
-				sendTransactions(peer, types.Transactions{tx})
-				break
-			default:
-				break
-			}
-			break
-		default:
-			break
 		}
+		break
+	case discover.SynNode:
+		for _, peer := range peers {
+			switch peer.RemoteType() {
+			//case discover.PreNode:
+			//	sendTransactions(peer, types.Transactions{tx})
+			//	break
+			case discover.HpNode:
+				sendTransactions(peer, types.Transactions{tx})
+				break
+			}
+		}
+		break
 	}
+	//
+	//for _, peer := range peers {
+	//	switch peer.LocalType() {
+	//	case discover.PreNode:
+	//		switch peer.RemoteType() {
+	//		case discover.PreNode:
+	//			sendTransactions(peer, types.Transactions{tx})
+	//			break
+	//		case discover.HpNode:
+	//			sendTransactions(peer, types.Transactions{tx})
+	//			break
+	//		default:
+	//			break
+	//		}
+	//		break
+	//	case discover.HpNode:
+	//		switch peer.RemoteType() {
+	//		case discover.HpNode:
+	//			sendTransactions(peer, types.Transactions{tx})
+	//			break
+	//		default:
+	//			break
+	//		}
+	//		break
+	//	case discover.SynNode:
+	//		switch peer.RemoteType() {
+	//		case discover.PreNode:
+	//			sendTransactions(peer, types.Transactions{tx})
+	//			break
+	//		case discover.HpNode:
+	//			sendTransactions(peer, types.Transactions{tx})
+	//			break
+	//		default:
+	//			break
+	//		}
+	//		break
+	//	default:
+	//		break
+	//	}
+	//}
 
 	log.Trace("Broadcast transaction", "hash", hash, "recipients", len(peers))
 }

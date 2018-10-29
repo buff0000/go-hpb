@@ -103,9 +103,9 @@ func (prm *PeerManager) Start(coinbase common.Address) error {
 	}
 
 	prm.server.Config.CoinBase = coinbase
-	log.Info("Set coinbase address by start", "address", coinbase)
+	log.Info("Set coinbase address by start", "address", coinbase.String())
 
-	if coinbase.String() =="0x0000000000000000000000000000000000000000" {
+	if coinbase.String() == "0x0000000000000000000000000000000000000000" {
 		panic("coinbase address is nil.")
 	}
 
@@ -266,6 +266,7 @@ func (prm *PeerManager) SetLocalType(nt discover.NodeType) bool {
 
 	return false
 }
+
 /*
 func (prm *PeerManager) SetHpRemoteFlag(flag bool) {
 	//log.Info("Change hp remote flag","from",prm.server.hpflag,"to",flag)
@@ -587,7 +588,7 @@ func (prm *PeerManager) startTest(host string, port string) float64 {
 func (prm *PeerManager) startClientBW() {
 	/////////////////////////////////////
 	//client
-	inteval := 60 * 60 * 24 // second of one day
+	inteval := 60 * 60 // second of one hour
 	rand.Seed(time.Now().UnixNano())
 	timeout := time.NewTimer(time.Second * time.Duration(inteval+rand.Intn(inteval)))
 	defer timeout.Stop()
@@ -600,23 +601,54 @@ func (prm *PeerManager) startClientBW() {
 			timeout.Reset(time.Second * time.Duration(inteval+rand.Intn(inteval)))
 		}
 
-		//2 to test
+		//2 select peer to test
 		if len(prm.peers) == 0 {
 			log.Warn("There is no peer to start bandwidth testing.")
 			continue
 		}
 
-		skip := rand.Intn(len(prm.peers))
+		pzlist := make([]*Peer, 0, len(prm.peers))
+		palist := make([]*Peer, 0, len(prm.peers))
 		for _, p := range prm.peers {
+			//bandwidth
+			//p.log.Error("############ select peer to bw test","bandwidth",p.bandwidth)
+			if p.remoteType == discover.BootNode || p.remoteType == discover.SynNode {
+				continue
+			}
+			p.log.Debug("select peer to bw test","bandwidth",p.bandwidth)
+			palist = append(palist, p)
+			if p.bandwidth < 0.1{
+				pzlist = append(pzlist, p)
+			}
+		}
+
+		if len(palist) == 0 {
+			log.Warn("There is no hpnode or prenode peer to start bandwidth testing.")
+			continue
+		}
+
+		//3. do test
+		if len(pzlist) > 0{
+			pt := pzlist[0]
+			pt.log.Debug("Start bandwidth testing(first).", "remoteType", pt.remoteType.ToString())
+			prm.sendReqBWTestMsg(pt)
+			timeout.Reset(time.Second * time.Duration(inteval+rand.Intn(inteval)))
+			continue
+		}
+
+		skip := rand.Intn(len(palist))
+		for _, p := range palist {
 			if skip > 0 {
 				skip = skip - 1
 				continue
 			}
 
-			p.log.Info("Start bandwidth testing.", "remoteType", p.remoteType.ToString())
+			p.log.Debug("Start bandwidth testing.", "remoteType", p.remoteType.ToString())
 			prm.sendReqBWTestMsg(p)
 			break
 		}
+		log.Debug("Reset timeout to longer.")
+		timeout.Reset(time.Second * time.Duration(inteval*2+rand.Intn(inteval*2)))
 	}
 	log.Error("Test bandwidth loop stop.")
 	return
@@ -642,7 +674,7 @@ func (prm *PeerManager) HandleReqBWTestMsg(p *Peer, msg Msg) error {
 		prm.ilock.Lock()
 		defer prm.ilock.Unlock()
 
-		p.log.Warn("Lock of iperf server.")
+		p.log.Debug("Lock of iperf server.")
 		resp := bwTestRes{
 			Version: 0x01,
 			Port:    uint16(prm.iport),
@@ -655,7 +687,7 @@ func (prm *PeerManager) HandleReqBWTestMsg(p *Peer, msg Msg) error {
 		}
 
 		time.Sleep(time.Second * 15)
-		p.log.Warn("Release lock of iperf server.")
+		p.log.Debug("Release lock of iperf server.")
 	}()
 
 	return nil

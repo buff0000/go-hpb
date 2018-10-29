@@ -540,8 +540,8 @@ running:
 			// A peer disconnected.
 			nid := pd.ID()
 			d := common.PrettyDuration(mclock.Now() - pd.created)
-			pd.log.Info("Removing p2p peer", "duration", d)
-			pd.log.Debug("Removing p2p peer", "duration", d, "req", pd.requested, "err", pd.err)
+			//pd.log.Info("Removing p2p peer", "duration", d)
+			pd.log.Error("Removing p2p peer", "duration", d, "req", pd.requested, "err", pd.err)
 			delete(peers, nid)
 
 			shortid := fmt.Sprintf("%x", nid[0:8])
