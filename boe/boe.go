@@ -217,14 +217,17 @@ func PostRecoverPubkey() {
                 log.Error("boe async callback recover pubkey success.")
                 pubkey64 := make([]byte, 64)
                 cArrayToGoArray(unsafe.Pointer(r.pub), pubkey64, len(pubkey64))
-                copy(rs.Sig, fullsig[32:])
-                copy(rs.Hash,fullsig[0:32])
-                copy(rs.Pub[1:], pubkey64)
+                copy(rs.Hash, fullsig[64:96])
+                copy(rs.Sig[0:32], fullsig[0:32])
+                copy(rs.Sig[32:64],fullsig[32:64])
+                rs.Sig[64] = fullsig[96]
                 rs.Pub[0] = 4
             }else{
                 log.Error("boe async callback recover pubkey failed, and goto soft recover.")
-                copy(rs.Hash, fullsig[0:32])
-                copy(rs.Sig, fullsig[32:])
+                copy(rs.Hash, fullsig[64:96])
+                copy(rs.Sig[0:32], fullsig[0:32])
+                copy(rs.Sig[32:64],fullsig[32:64])
+                rs.Sig[64] = fullsig[96]
                 pub, err := crypto.Ecrecover(rs.Hash, rs.Sig)
                 if(err == nil) {
                     copy(rs.Pub[:], pub[0:])
