@@ -408,7 +408,7 @@ func (boe *BoeHandle) ASyncValidateSign(hash []byte, r []byte, s []byte, v byte)
         m_sig  = make([]byte, 97)
         c_sig = (*C.uchar)(unsafe.Pointer(&m_sig[0]))
     )
-
+    log.Info("boe hanxiaole test ASyncValidateSign","hash",hex.EncodeToString(hash))
     copy(m_sig[32-len(r):32], r)
     copy(m_sig[64-len(s):64], s)
     copy(m_sig[96-len(hash):96], hash)
