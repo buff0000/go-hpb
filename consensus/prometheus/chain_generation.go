@@ -254,7 +254,7 @@ func (c *Prometheus) PrepareBlockHeader(chain consensus.ChainReader, header *typ
 func (c *Prometheus) GenBlockWithSig(chain consensus.ChainReader, block *types.Block, stop <-chan struct{}) (*types.Block, error) {
 	header := block.Header()
 
-	log.Info("HPB Prometheus Seal is starting")
+	log.Debug("HPB Prometheus Seal is starting")
 
 	number := header.Number.Uint64()
 

@@ -637,7 +637,7 @@ func (this *Puller) insert(peer string, block *types.Block) {
 	hash := block.Hash()
 
 	// Run the import on a new thread
-	log.Info("Importing propagated block", "peer", peer, "number", block.Number(), "hash", hash, "difficulty", block.Difficulty())
+	log.Debug("Importing propagated block", "peer", peer, "number", block.Number(), "hash", hash, "difficulty", block.Difficulty())
 	go func() {
 		defer func() { this.done <- hash }()
 

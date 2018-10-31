@@ -373,7 +373,6 @@ func (tx *Transaction) AsMessage(s Signer) (Message, error) {
 		data:       tx.data.Payload,
 		checkNonce: true,
 	}
-
 	var err error
 	msg.from, err = Sender(s, tx)
 	return msg, err

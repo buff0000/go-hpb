@@ -1032,7 +1032,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks) (int, []interface{}, []*ty
 			return i, events, coalescedLogs, err
 		}
 		// Write the block to the chain and get the status.
-		log.Info("----> Write Block and State From Outside", "number", block.Number(), "hash", block.Hash(), "difficulty", block.Difficulty())
+		log.Debug("----> Write Block and State From Outside", "number", block.Number(), "hash", block.Hash(), "difficulty", block.Difficulty())
 		status, err := bc.WriteBlockAndState(block, receipts, state)
 		if err != nil {
 			return i, events, coalescedLogs, err
@@ -1042,7 +1042,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks) (int, []interface{}, []*ty
 			log.Debug("Inserted new block", "number", block.Number(), "hash", block.Hash(), "uncles", len(block.Uncles()),
 				"txs", len(block.Transactions()), "gas", block.GasUsed(), "elapsed", common.PrettyDuration(time.Since(bstart)))
 
-			log.Info("Inserted new block", "number", block.Number(), "hash", block.Hash())
+			log.Debug("Inserted new block", "number", block.Number(), "hash", block.Hash())
 
 			coalescedLogs = append(coalescedLogs, logs...)
 			blockInsertTimer.UpdateSince(bstart)
@@ -1095,9 +1095,8 @@ func (st *insertStats) report(chain []*types.Block, index int) {
 			txs = countTransactions(chain[st.lastIndex : index+1])
 		)
 		context := []interface{}{
-			"blocks", st.processed, "txs", txs, "mgas", float64(st.usedGas) / 1000000,
-			"elapsed", common.PrettyDuration(elapsed), "mgasps", float64(st.usedGas) * 1000 / float64(elapsed),
-			"number", end.Number(), "hash", end.Hash(),
+			"number", end.Number(),"txs", txs, "elapsed", common.PrettyDuration(elapsed),"size",end.Size(),
+			"blocks", st.processed, "mgas", float64(st.usedGas) / 1000000, "mgasps", float64(st.usedGas) * 1000 / float64(elapsed), "hash", end.Hash(),
 		}
 		if st.queued > 0 {
 			context = append(context, []interface{}{"queued", st.queued}...)
@@ -1105,7 +1104,7 @@ func (st *insertStats) report(chain []*types.Block, index int) {
 		if st.ignored > 0 {
 			context = append(context, []interface{}{"ignored", st.ignored}...)
 		}
-		log.Info("Imported new chain segment", context...)
+		log.Info("Imported new chain", context...)
 
 		*st = insertStats{startTime: now, lastIndex: index + 1}
 	}
