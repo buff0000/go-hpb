@@ -1020,6 +1020,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks) (int, []interface{}, []*ty
 			return i, events, coalescedLogs, err
 		}
 		// Process block using the parent state as reference point.
+		fmt.Println("start Process################")
 		receipts, logs, usedGas, err := bc.processor.Process(block, state)
 		if err != nil {
 			bc.reportBlock(block, receipts, err)
@@ -1095,7 +1096,7 @@ func (st *insertStats) report(chain []*types.Block, index int) {
 			txs = countTransactions(chain[st.lastIndex : index+1])
 		)
 		context := []interface{}{
-			"number", end.Number(),"txs", txs, "elapsed", common.PrettyDuration(elapsed),"size",end.Size(),
+			"number", end.Number(), "txs", txs, "elapsed", common.PrettyDuration(elapsed), "size", end.Size(),
 			"blocks", st.processed, "mgas", float64(st.usedGas) / 1000000, "mgasps", float64(st.usedGas) * 1000 / float64(elapsed), "hash", end.Hash(),
 		}
 		if st.queued > 0 {
