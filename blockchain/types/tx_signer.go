@@ -127,7 +127,7 @@ func Sender(signer Signer, tx *Transaction) (common.Address, error) {
 	}
 
 	g_sendercount += 1
-	fmt.Println("need Sender !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", g_sendercount)
+	log.Debug("Need sender:", "g_sendercount:", g_sendercount)
 	//log.Info("Sender hanxiaole 11111111111111111 send ", "tx.hash", tx.Hash(), "signer.Hash(tx)", signer.Hash(tx))
 	addr, err := signer.Sender(tx)
 	if err != nil {
