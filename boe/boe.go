@@ -204,8 +204,8 @@ func PostRecoverPubkey() {
         var err error
         r = C.getResult()
         if r == nil {
-            log.Info("have no result")
-            time.Sleep(time.Duration(1)*time.Second)
+            //log.Info("have no result")
+            //time.Sleep(time.Duration(1)*time.Second)
         }else {
             var fullsig = make([]byte, 97)
 
