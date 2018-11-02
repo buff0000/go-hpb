@@ -141,8 +141,8 @@ func ASynSender(signer Signer, tx *Transaction) (common.Address, error) {
 
 	//log.Info("hanxiaole test SMapGet(Asynsinger,signer.Hash(tx))", "signer.Hash(tx)", signer.Hash(tx), "tx.Hash()", tx.Hash())
 	if nil == tx {
-		m.L.Lock()
-		defer m.L.Unlock()
+		Asynsinger.L.Lock()
+		defer Asynsinger.L.Unlock()
 		for k, _ := range Asynsinger.Data {
 			delete(Asynsinger.Data, k)
 		}
