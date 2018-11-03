@@ -23,6 +23,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"gopkg.in/fatih/set.v0"
 	"github.com/hpb-project/go-hpb/blockchain"
 	"github.com/hpb-project/go-hpb/blockchain/state"
 	"github.com/hpb-project/go-hpb/blockchain/storage"
