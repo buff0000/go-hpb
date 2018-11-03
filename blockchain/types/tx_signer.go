@@ -32,8 +32,9 @@ import (
 )
 
 var (
-	ErrInvalidChainId    = errors.New("invalid chain id for signer")
-	ErrInvalidAsynsinger = errors.New("invalid chain id  Asyn Send OK for signer")
+	ErrInvalidChainId        = errors.New("invalid chain id for signer")
+	ErrInvalidAsynsinger     = errors.New("invalid chain id  Asyn Send OK for signer")
+	g_sendercount        int = 0
 )
 
 // sigCache is used to cache the derived sender and contains
@@ -124,8 +125,9 @@ func Sender(signer Signer, tx *Transaction) (common.Address, error) {
 			return sigCache.from, nil
 		}
 	}
-	//fmt.Println("need Sender !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 
+	g_sendercount += 1
+	log.Debug("Need sender:", "g_sendercount:", g_sendercount)
 	//log.Info("Sender hanxiaole 11111111111111111 send ", "tx.hash", tx.Hash(), "signer.Hash(tx)", signer.Hash(tx))
 	addr, err := signer.Sender(tx)
 	if err != nil {
@@ -139,6 +141,8 @@ func ASynSender(signer Signer, tx *Transaction) (common.Address, error) {
 
 	//log.Info("hanxiaole test SMapGet(Asynsinger,signer.Hash(tx))", "signer.Hash(tx)", signer.Hash(tx), "tx.Hash()", tx.Hash())
 	if nil == tx {
+		Asynsinger.L.Lock()
+		defer Asynsinger.L.Unlock()
 		for k, _ := range Asynsinger.Data {
 			delete(Asynsinger.Data, k)
 		}
