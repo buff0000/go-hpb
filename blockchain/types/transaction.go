@@ -308,6 +308,8 @@ func (tx *Transaction) Nonce() uint64      { return tx.data.AccountNonce }
 func (tx *Transaction) CheckNonce() bool   { return true }
 
 //TODO for test use
+func (tx *Transaction) GetFromSigCache() atomic.Value { return tx.from}
+func (tx *Transaction) SetFromSigCache(from SigCache) { tx.from.Store(from) }
 func (tx *Transaction) SetFrom(from common.Address) { tx.from.Store(from) }
 func (tx *Transaction) SetFromP2P(fromP2P bool)     { tx.fromP2P = fromP2P }
 func (tx *Transaction) IsFromP2P() bool             { return tx.fromP2P }

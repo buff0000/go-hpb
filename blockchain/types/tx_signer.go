@@ -21,62 +21,45 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-
 	"github.com/hpb-project/go-hpb/common"
 	"github.com/hpb-project/go-hpb/common/crypto"
 	"github.com/hpb-project/go-hpb/config"
 	"github.com/hpb-project/go-hpb/boe"
 	"github.com/hpb-project/go-hpb/common/log"
-	"sync"
 	"encoding/hex"
+	"time"
+	"sync"
 )
 
 var (
 	ErrInvalidChainId = errors.New("invalid chain id for signer")
-	ErrInvalidAsynsinger = errors.New("invalid chain id  Asyn Send OK for signer")
+	ErrInvalidAsynsinger = errors.New("just callback Asyn Send OK for signer")
 )
 
-// sigCache is used to cache the derived sender and contains
+// SigCache is used to cache the derived sender and contains
 // the signer used to derive it.
-type sigCache struct {
-	signer Signer
-	from   common.Address
+type SigCache struct {
+	Casigner Signer
+	Cafrom   common.Address
 }
-var singerRWLock sync.RWMutex
+
+
+
 type Smap struct {
-	Data map[common.Hash]common.Address
+	Data  map[common.Hash]common.Address                /*验证返回结果*/
+	WaitsingerTx map[common.Hash]*Transaction     /*原始交易*/
+	WaitsingerTxbeats  map[common.Hash]time.Time        /*交易发送时间*/
+	SendFlag map[common.Hash]bool                       /*以发送验证为True*/
+	//	ChannelType map[common.Hash]int						/* 1 :synblock trans 2 :client trans 3 :验证通过 4:交易失败 5：clieng同步等待返回中 6 :交易完成 7 :验证失败*/
 	L sync.RWMutex
 }
 
 var (
-	Asynsinger = &Smap{Data:make(map[common.Hash]common.Address)}
-	//Beoreckey  = &Smap{Data:make(map[common.Hash]common.Address)}
+	//	Asynsinger = &Smap{Data:make(map[common.Hash]common.Address),WaitsingerTx:make(map[common.Hash]*types.Transaction),WaitsingerTxbeats:make(map[common.Hash]time.Time),SendFlag:make(map[common.Hash]bool),ChannelType:make(map[common.Hash]int)}
+	Asynsinger = &Smap{Data:make(map[common.Hash]common.Address),WaitsingerTx:make(map[common.Hash]*Transaction),WaitsingerTxbeats:make(map[common.Hash]time.Time),SendFlag:make(map[common.Hash]bool)}
+	ChanAsynsinger =  make(chan boe.RecoverPubkey)
 )
 
-func SMapGet(m *Smap, khash common.Hash) (common.Address,error){
-	m.L.RLock()
-	defer m.L.RUnlock()
-
-	kvalue,ok := m.Data[khash]
-	if ok != true {
-		log.Info("SMapGet hash values is null","m.Data[khash]",m.Data[khash])
-		return common.Address{},errors.New("SMapGet hash values is null")
-    }
-	log.Info("hanxiaole test SMapGet input hash and kvalue","khash",khash,"kvalue",kvalue)
-	return kvalue,nil
-}
-
-func SMapSet(m *Smap, khash common.Hash,kaddress common.Address) error {
-	m.L.Lock()
-	defer m.L.Unlock()
-	m.Data[khash]=kaddress
-	from,ok := m.Data[khash]
-	if ok != true{
-		return errors.New("SMapSet hash values is null")
-	}
-	log.Info("hanxiaole SMapSet =11111111111111111111===","SMapSet from",from)
-	return nil
-}
 
 // MakeSigner returns a Signer based on the given chain config and block number.
 func MakeSigner(config *config.ChainConfig) Signer {
@@ -105,12 +88,12 @@ func Sender(signer Signer, tx *Transaction) (common.Address, error) {
 	//	return tx.from.Load().(common.Address), nil
 	//}
 	if sc := tx.from.Load(); sc != nil {
-		sigCache := sc.(sigCache)
+		SigCache := sc.(SigCache)
 		// If the signer used to derive from in a previous
 		// call is not the same as used current, invalidate
 		// the cache.2
-		if sigCache.signer.Equal(signer) {
-			return sigCache.from, nil
+		if SigCache.Casigner.Equal(signer) {
+			return SigCache.Cafrom, nil
 		}
 	}
     log.Info("Sender hanxiaole 11111111111111111 send ","tx.hash",tx.Hash(),"signer.Hash(tx)",signer.Hash(tx))
@@ -118,33 +101,65 @@ func Sender(signer Signer, tx *Transaction) (common.Address, error) {
 	if err != nil {
 		return common.Address{}, err
 	}
-	tx.from.Store(sigCache{signer: signer, from: addr})
+	tx.from.Store(SigCache{Casigner: signer, Cafrom: addr})
 	return addr, nil
 }
 func ASynSender(signer Signer, tx *Transaction) (common.Address, error) {
 
 	log.Info("hanxiaole test SMapGet(Asynsinger,signer.Hash(tx))","signer.Hash(tx)",signer.Hash(tx),"tx.Hash()",tx.Hash())
+	sendFlag, errsend := SMapGetSendFlag(Asynsinger,signer.Hash(tx))
+	if sendFlag == true && errsend == nil{
+		log.Info("重复发送!!!!!!!!!!!","signer.Hash(tx)",signer.Hash(tx),"tx.Hash()",tx.Hash())
+		return common.Address{}, errors.New("resend tx error")
+	}
 
-	asynAddress ,err:= SMapGet(Asynsinger,signer.Hash(tx))
+	asynAddress ,err:= SMapGetAddress(Asynsinger,signer.Hash(tx))
 	if err == nil{
 		log.Info("hanxiaole test ASynSender reASyn SMapGet()  ","common.Address",asynAddress,"signer.Hash(tx)",signer.Hash(tx),"tx.hash",tx.Hash())
-		/*SMapGet success and set sigCache value*/
-		tx.from.Store(sigCache{signer: signer, from: asynAddress})
+		/*SMapGet success and set SigCache value*/
+		tx.from.Store(SigCache{Casigner: signer, Cafrom: asynAddress})
 		return asynAddress,nil
 	}
 
 	log.Info("hanxiaole tx.from.Load()","tx.Hash()",tx.Hash(),"signer.Hash(tx)",signer.Hash(tx))
 	if sc := tx.from.Load(); sc != nil {
-		sigCache := sc.(sigCache)
+		SigCache := sc.(SigCache)
 		// If the signer used to derive from in a previous
 		// call is not the same as used current, invalidate
 		// the cache.2
-		if sigCache.signer.Equal(signer) {
-			log.Info("hanxiaole test ASynSender reASyn tx.from.Load() OKOKOK ","sigCache.from",sigCache.from,"tx.Hash()",tx.Hash())
-			return sigCache.from, nil
+		if SigCache.Casigner.Equal(signer) {
+			log.Info("hanxiaole test ASynSender reASyn tx.from.Load() OKOKOK ","SigCache.from",SigCache.Cafrom,"tx.Hash()",tx.Hash())
+			return SigCache.Cafrom, nil
 		}
 	}
 
+	terr := SMapSetWaitsingerTx(Asynsinger,signer.Hash(tx),tx)
+	if terr != nil{
+		log.Info("SMapSetWaitsingerTx error ")
+		return common.Address{}, errors.New("SMapSetWaitsingerTx error")
+	}
+
+	terr1 := SMapSetWaitsingerTxbeats(Asynsinger,signer.Hash(tx),time.Now())
+	if terr1 != nil{
+		log.Info("SMapSetWaitsingerTxbeats error ")
+		return common.Address{}, errors.New("SMapSetWaitsingerTxbeats error")
+	}
+
+	sandbag := SMapSetSendFlag(Asynsinger,signer.Hash(tx),true)
+	if sandbag != nil{
+		log.Info("SMapSetSendFlag error ")
+		return common.Address{}, errors.New("SMapSetSendFlag error")
+	}
+
+	/* save signer */
+	tx.from.Store(SigCache{Casigner: signer, Cafrom: common.Address{}})
+	/*
+	if txpool.Asynsinger.WaitsingerTx[signer.Hash(tx)] == nil {
+		txpool.Asynsinger.WaitsingerTx[signer.Hash(tx)] = tx
+	}
+
+	txpool.Asynsinger.WaitsingerTxbeats[signer.Hash(tx)] = time.Now()
+	*/
 	addr, err := signer.ASynSender(tx)
 	if err != nil {
 		return common.Address{}, err
@@ -175,7 +190,6 @@ func NewBoeSigner(chainId *big.Int) BoeSigner {
 	if chainId == nil {
 		chainId = new(big.Int)
 	}
-	boe.BoeGetInstance().RegisterRecoverPubCallback(boecallback)
 
 	return BoeSigner{
 		chainId:    chainId,
@@ -347,7 +361,7 @@ func deriveChainId(v *big.Int) *big.Int {
 	v = new(big.Int).Sub(v, big.NewInt(35))
 	return v.Div(v, big.NewInt(2))
 }
-
+/*
 func boecallback(rs boe.RecoverPubkey,err error) {
 	if err != nil {
 		log.Trace("boe validatesign error")
@@ -358,10 +372,10 @@ func boecallback(rs boe.RecoverPubkey,err error) {
 
 	var addr = common.Address{}
 	copy(addr[:], crypto.Keccak256(rs.Pub[1:])[12:])
-/*
+
 	var sigtmp []byte
 	copy(sigtmp[:], rs.Sig[0:])
-*/
+
 	var  comhash common.Hash
 	copy(comhash[:], rs.Hash[0:])
 
@@ -372,3 +386,134 @@ func boecallback(rs boe.RecoverPubkey,err error) {
 	log.Info("boe boecallback hanxiaole Store success","hash",comhash,"rs.hash",rs.Hash,"addr",addr)
 
 }
+*/
+
+
+
+func SMapGetAddress(m *Smap, khash common.Hash) (common.Address,error){
+	m.L.RLock()
+	defer m.L.RUnlock()
+
+	kvalue,ok := m.Data[khash]
+	if ok != true {
+		log.Info("SMapGetAddress hash values is null","m.Data[khash]",m.Data[khash])
+		return common.Address{},errors.New("SMapGetAddress hash values is null")
+	}
+
+	log.Info("hanxiaole test SMapGetAddress input hash and kvalue","khash",khash,"kvalue",kvalue)
+	return kvalue,nil
+}
+
+func SMapGetTx(m *Smap, khash common.Hash) (*Transaction,error){
+	m.L.RLock()
+	defer m.L.RUnlock()
+
+	kvalue,ok := m.WaitsingerTx[khash]
+	if ok != true {
+		log.Info("SMapGetTx hash values is null","m.WaitsingerTx[khash]",m.WaitsingerTx[khash])
+		return nil,errors.New("SMapGetTx hash values is null")
+	}
+	log.Info("hanxiaole test SMapGetTx input hash and kvalue","khash",khash,"kvalue",kvalue)
+	return kvalue,nil
+}
+
+func SMapGetSendFlag(m *Smap, khash common.Hash) (bool,error){
+	m.L.RLock()
+	defer m.L.RUnlock()
+
+	kvalue,ok := m.SendFlag[khash]
+	if ok != true {
+		log.Info("SMapGetTxTime hash values is null","m.WaitsingerTxbeats[khash]",m.SendFlag[khash])
+		return false,errors.New("SMapGetTxTime hash values is null")
+	}
+	log.Info("hanxiaole test SMapGetTxTime input hash and kvalue","khash",khash,"kvalue",kvalue)
+	return kvalue,nil
+}
+/*
+func SMapGetTxTime(m *Smap, khash common.Hash) (time.Time,error){
+	m.L.RLock()
+	defer m.L.RUnlock()
+
+	kvalue,ok := m.WaitsingerTxbeats[khash]
+	if ok != true {
+		log.Info("SMapGetTxTime hash values is null","m.WaitsingerTxbeats[khash]",m.WaitsingerTxbeats[khash])
+		return time.Now(),errors.New("SMapGetTxTime hash values is null")
+	}
+	log.Info("hanxiaole test SMapGetTxTime input hash and kvalue","khash",khash,"kvalue",kvalue)
+	return kvalue,nil
+}
+
+func SMapGetChannelType(m *Smap, khash common.Hash) (int,error){
+	m.L.RLock()
+	defer m.L.RUnlock()
+
+	kvalue,ok := m.ChannelType[khash]
+	if ok != true {
+		log.Info("SMapGetChannelType hash values is null","m.ChannelType[khash]",m.ChannelType[khash])
+		return 0,errors.New("SMapGetChannelType hash values is null")
+	}
+	log.Info("hanxiaole test SMapGetChannelType input hash and kvalue","khash",khash,"kvalue",kvalue)
+	return kvalue,nil
+}
+*/
+func SMapSetAddress(m *Smap, khash common.Hash,kaddress common.Address) error {
+	m.L.Lock()
+	defer m.L.Unlock()
+	m.Data[khash]=kaddress
+	fromAddress,ok := m.Data[khash]
+	if ok != true{
+		return errors.New("SMapSetAddress hash values is null")
+	}
+	log.Info("hanxiaole SMapSetAddress","SMapSetAddress from",fromAddress)
+	return nil
+}
+
+func SMapSetWaitsingerTx(m *Smap, khash common.Hash,ptx *Transaction) error {
+	m.L.Lock()
+	defer m.L.Unlock()
+	m.WaitsingerTx[khash]=ptx
+	fromTx,ok := m.WaitsingerTx[khash]
+	if ok != true{
+		return errors.New("SMapSetWaitsingerTx hash values is null")
+	}
+	log.Info("hanxiaole SMapSetWaitsingerTx","SMapSetWaitsingerTx from Tx.Hash",fromTx.Hash())
+	return nil
+}
+
+func SMapSetWaitsingerTxbeats(m *Smap, khash common.Hash,ttime time.Time) error {
+	m.L.Lock()
+	defer m.L.Unlock()
+	m.WaitsingerTxbeats[khash]=ttime
+	fromTime,ok := m.WaitsingerTxbeats[khash]
+	if ok != true{
+		return errors.New("SMapSetWaitsingerTxbeats hash values is null")
+	}
+	log.Info("hanxiaole SMapSetWaitsingerTxbeats","WaitsingerTxbeats from",fromTime)
+	return nil
+}
+
+func SMapSetSendFlag(m *Smap, khash common.Hash,sendflag bool) error {
+	m.L.Lock()
+	defer m.L.Unlock()
+	m.SendFlag[khash]=sendflag
+	fromFlag,ok := m.SendFlag[khash]
+	if ok != true{
+		return errors.New("SMapSetSendFlag hash values is null")
+	}
+	log.Info("hanxiaole SMapSetSendFlag","SMapSetSendFlag from",fromFlag)
+	return nil
+}
+
+/*
+func SMapSetChannelType(m *Smap, khash common.Hash,channeltype int) error {
+	m.L.Lock()
+	defer m.L.Unlock()
+	m.ChannelType[khash]=channeltype
+	footie,ok := m.ChannelType[khash]
+	if ok != true{
+		return errors.New("SMapSetChannelType hash values is null")
+	}
+	log.Info("hanxiaole SMapSetChannelType","SMapSetChannelType footie", footie)
+	return nil
+}
+*/

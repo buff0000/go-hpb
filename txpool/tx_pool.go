@@ -33,6 +33,8 @@ import (
 	"sort"
 	"gopkg.in/karalabe/cookiejar.v2/collections/prque"
 	"github.com/hpb-project/go-hpb/event/sub"
+	"github.com/hpb-project/go-hpb/boe"
+	"github.com/hpb-project/go-hpb/common/crypto"
 )
 
 var (
@@ -89,10 +91,17 @@ type TxPool struct {
 	all     map[common.Hash]*types.Transaction // All transactions to allow lookups
 	tmpqueue     map[common.Hash]*types.Transaction // delete transactions to tmpqueue
 	tmpbeats   map[common.Hash]time.Time       // Last heartbeat from each known tmpqueue account
+
+	chantransuccess  map[common.Hash]chan int
+
 }
+
+/*
 const (
 	TxpoolEventtype     event.EventType = 0x01
 )
+*/
+
 //Create the transaction pool and start main process loop.
 func NewTxPool(config config.TxPoolConfiguration, chainConfig *config.ChainConfig, blockChain blockChain) *TxPool {
 	if INSTANCE.Load() != nil {
@@ -112,7 +121,10 @@ func NewTxPool(config config.TxPoolConfiguration, chainConfig *config.ChainConfi
 		stopCh:      make(chan struct{}),
 		tmpbeats:    make(map[common.Hash]time.Time),
 		tmpqueue:     make(map[common.Hash]*types.Transaction),
+		chantransuccess:  make(map[common.Hash]chan int),
 	}
+
+	boe.BoeGetInstance().RegisterRecoverPubCallback(boecallback)
 	INSTANCE.Store(pool)
 	return pool
 }
@@ -141,6 +153,9 @@ func (pool *TxPool) Start(){
 	//5.start main process loop
 	pool.wg.Add(1)
 	go pool.loop()
+
+	/*异步验证结果登记*/
+	go pool.chanAsynSingerloop()
 }
 
 func GetTxPool() *TxPool {
@@ -162,6 +177,71 @@ func (pool *TxPool) Stop() {
 	}
 }
 
+func boecallback(rs boe.RecoverPubkey,err error) {
+	if err != nil {
+		log.Trace("boe validatesign error")
+	}
+	if len(rs.Pub) == 0 || rs.Pub[0] != 4 {
+		log.Trace("invalid public key")
+	}
+
+	var addr = common.Address{}
+	copy(addr[:], crypto.Keccak256(rs.Pub[1:])[12:])
+	/*
+		var sigtmp []byte
+		copy(sigtmp[:], rs.Sig[0:])
+	*/
+	var  comhash common.Hash
+	copy(comhash[:], rs.Hash[0:])
+
+	/*设置异步验证交易结果*/
+	errSet := types.SMapSetAddress(types.Asynsinger,comhash,addr)
+	if errSet !=nil{
+		log.Info("boecallback SMapSet error!")
+	}
+    /*验证结果的数据写入通道*/
+	types.ChanAsynsinger <- rs
+	log.Info("boe boecallback hanxiaole Store success","hash",comhash,"rs.hash",rs.Hash,"addr",addr)
+
+}
+
+func (pool *TxPool) chanAsynSingerloop() {
+	// Keep waiting for and reacting to the various ChanAsynsinger
+	for {
+		// A real event arrived, process interesting content
+		select {
+		/*通道接受*/
+		case  ev := <-types.ChanAsynsinger:
+			var  comhash common.Hash
+			copy(comhash[:], ev.Hash[0:])
+
+			var addr = common.Address{}
+			copy(addr[:], crypto.Keccak256(ev.Pub[1:])[12:])
+
+			tx,err := types.SMapGetTx(types.Asynsinger,comhash)
+			if err != nil{
+				log.Info("SMapGetTx error")
+				pool.chantransuccess[tx.Hash()] <- 7           /*7 验证失败*/
+			}
+
+			txfrom := tx.GetFromSigCache()
+
+			if sc := txfrom.Load(); sc != nil {
+				sigCache := sc.(types.SigCache)
+				tmpsigCache := types.SigCache{Casigner: sigCache.Casigner, Cafrom: addr}
+				tx.SetFromSigCache(tmpsigCache)
+			}
+
+			err1 := pool.AsynAddTx(tx)
+			if err1 != nil{
+				log.Info("AsynAddTx(tx) fail")
+				pool.chantransuccess[tx.Hash()] <- 4         /*4 交易失败*/
+			}
+
+			pool.chantransuccess[tx.Hash()] <- 6             /*6 交易成功*/
+		}
+	}
+}
 //Main process loop.
 func (pool *TxPool) loop() {
 	defer pool.wg.Done()
@@ -299,7 +379,7 @@ func (pool *TxPool) reset(oldHead, newHead *types.Header) {
 	pool.currentMaxGas = newHead.GasLimit
 
 	//batch TxsAsynSender
-	go pool.goTxsAsynSender(reinject)
+	go pool.GoTxsAsynSender(reinject)
 
 	// Inject any transactions discarded due to reorgs
 	log.Debug("Reinjecting stale transactions", "count", len(reinject))
@@ -342,19 +422,11 @@ func (pool *TxPool) validateTx(tx *types.Transaction) error {
 	}
 	// Call BOE recover sender.
     log.Info("hanxiaole test validateTx","tx.hash",tx.Hash())
+
 	from, err := types.ASynSender(pool.signer, tx)
 	if err != nil {
-		log.Info("validateTx ErrInvalid  ASynSender", "ErrInvalidSender",ErrInvalidSender,"tx.hash",tx.Hash())
-		//var from2 common.Address
-		from2, err := types.Sender(pool.signer, tx)
-
-		if err != nil {
-			log.Info("validateTx Sender ErrInvalidSender", "ErrInvalidSender",ErrInvalidSender,"tx.hash",tx.Hash())
-			return ErrInvalidSender
-		}
-
-		copy(from[0:],from2[0:])
-
+		log.Info("validateTx ASynSender ErrInvalidSender", "ErrInvalidSender",ErrInvalidSender,"tx.hash",tx.Hash())
+		return ErrInvalidSender
 	}
 	log.Info("hanxiaole test validateTx","from",from)
 	// Check gasPrice.
@@ -405,6 +477,39 @@ func (pool *TxPool) AddTxs(txs []*types.Transaction) error {
 
 // AddTx attempts to queue a transactions if valid.
 func (pool *TxPool) AddTx(tx *types.Transaction) error {
+	//pool.mu.Lock()
+	//defer pool.mu.Unlock()
+
+	hash := tx.Hash()
+	if pool.all[hash] != nil {
+		log.Trace("Discarding already known transaction", "hash", hash)
+		return fmt.Errorf("known transaction: %x", hash)
+	}
+
+	var ch = make(chan int)
+
+	pool.chantransuccess[hash] = ch
+
+	from, err := types.ASynSender(pool.signer, tx)
+	if err != nil {
+		log.Info("ASynSender Send SUCCESS", "from",from,"tx.hash",tx.Hash())
+		select {
+		// Handle ChainHeadEvent
+		case result := <-ch:
+		     if result == 6{
+				 return nil
+			 }else {
+			 	return ErrAsynError
+			 }
+		}
+	}
+
+	log.Info("hanxiaole test validateTx","from",from)
+	return nil
+}
+
+// AsynAddTx attempts to queue a transactions if valid.
+func (pool *TxPool) AsynAddTx(tx *types.Transaction) error {
 	pool.mu.Lock()
 	defer pool.mu.Unlock()
 
@@ -421,7 +526,6 @@ func (pool *TxPool) AddTx(tx *types.Transaction) error {
 
 	return pool.addTxLocked(tx)
 }
-
 // addTxsLocked attempts to queue a batch of transactions if they are valid,
 // whilst assuming the transaction pool lock is already held.
 func (pool *TxPool) addTxsLocked(txs []*types.Transaction) error {
@@ -434,13 +538,7 @@ func (pool *TxPool) addTxsLocked(txs []*types.Transaction) error {
 				from, err := types.ASynSender(pool.signer, tx) // already validated
 				if err != nil{
 					log.Info("addTxsLocked ASynSender Error","tx.bash",tx.Hash())
-
-					from2, err := types.Sender(pool.signer, tx) // already validated
-					if err != nil{
-						log.Info("addTxsLocked Sender Error","tx.bash",tx.Hash())
-					}
-
-					copy(from[0:], from2[0:])
+					return err
 				}
 				log.Info("hanxiaole test addTxsLocked","from",from)
 				dirty[from] = struct{}{}
@@ -464,7 +562,7 @@ func (pool *TxPool) addTxsLocked(txs []*types.Transaction) error {
 }
 // addTxsLocked attempts to queue a batch of transactions if they are valid,
 // whilst assuming the transaction pool lock is already held.
-func (pool *TxPool) goTxsAsynSender(txs []*types.Transaction) error {
+func (pool *TxPool) GoTxsAsynSender(txs []*types.Transaction) error {
 	for _, tx := range txs {
 		log.Info("goTxsAsynSender ASynSender hanxiaole test ","tx.hash",tx.Hash())
 		types.ASynSender(pool.signer, tx) // already ASynSender
@@ -492,11 +590,7 @@ func (pool *TxPool) addTxLocked(tx *types.Transaction) error {
 		from, err := types.ASynSender(pool.signer, tx) // already validated
 		if err != nil {
 			log.Info("addTxLocked ASynSender Error","tx.bash",tx.Hash())
-			from2, err := types.Sender(pool.signer, tx) // already validated
-			if err != nil {
-				log.Info("addTxLocked Sender Error","tx.bash",tx.Hash())
-			}
-			copy(from[0:],from2[0:])
+			return err
 		}
 		log.Info("hanxiaole test addTxLocked","from",from)
 		pool.promoteExecutables([]common.Address{from})
@@ -519,11 +613,7 @@ func (pool *TxPool) add(tx *types.Transaction) (bool, error) {
 	log.Info("hanxiaole test add transaction ","tx.hash",tx.Hash())
 	if err != nil{
 		log.Info("hanxiaole test add ASynSender error","tx.hash",tx.Hash())
-		from2, err := types.Sender(pool.signer, tx) // already validated
-		if err !=nil{
-			log.Info("add Sender error")
-		}
-		copy(from[0:],from2[0:])
+		return false, err
 	}
 	log.Info("hanxiaole test add","from",from)
 	// If the transaction pool is full, reject
@@ -574,11 +664,7 @@ func (pool *TxPool) enqueueTx(hash common.Hash, tx *types.Transaction) (bool, er
 	from, err := types.ASynSender(pool.signer, tx) // already validated
 	if err != nil{
 		log.Info("hanxiaole test enqueueTx ASynSender error","tx.hash",tx.Hash())
-		from2, err := types.Sender(pool.signer, tx) // already validated
-		if err != nil{
-			log.Info("enqueueTx Sender error","tx.bash",tx.Hash())
-		}
-		copy(from[0:],from2[0:])
+		return false, err
 	}
 	log.Info("hanxiaole test enqueueTx","from",from)
 	if pool.queue[from] == nil {
