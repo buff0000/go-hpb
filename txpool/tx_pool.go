@@ -538,7 +538,12 @@ func (pool *TxPool) addTxsLocked(txs []*types.Transaction) error {
 				from, err := types.ASynSender(pool.signer, tx) // already validated
 				if err != nil{
 					log.Info("addTxsLocked ASynSender Error","tx.bash",tx.Hash())
-					return err
+					from2, err := types.Sender(pool.signer, tx) // already validated
+					if err != nil{
+						log.Info("addTxsLocked Sender Error","tx.bash",tx.Hash())
+						return err
+					}
+					copy(from[0:], from2[0:])
 				}
 				log.Info("hanxiaole test addTxsLocked","from",from)
 				dirty[from] = struct{}{}
