@@ -146,7 +146,7 @@ import (
     "unsafe"
     "fmt"
     _"sync/atomic"
-    "time"
+    //"time"
 	"github.com/hpb-project/go-hpb/common/log"
 	"github.com/hpb-project/go-hpb/common/crypto"
     "encoding/hex"
