@@ -116,14 +116,14 @@ int recover_pubkey_callback(unsigned char *pub, unsigned char *sig,void *userdat
     SResult *r = rsNew();
     if(sig)
     {
-        printf("%s: sig ", "recover_pubkey_callback");
-        hex_dump(sig, SIG_LEN);
+        //printf("%s: sig ", "recover_pubkey_callback");
+        //hex_dump(sig, SIG_LEN);
         memcpy(r->sig, sig, SIG_LEN);
     }
     if(pub)
     {
-        printf("%s: pub ", "recover_pubkey_callback");
-        hex_dump(pub, PUB_LEN);
+        //printf("%s: pub ", "recover_pubkey_callback");
+        //hex_dump(pub, PUB_LEN);
 
         r->flag = 0; // ok
         memcpy(r->pub+1, pub, PUB_LEN);
@@ -149,7 +149,6 @@ import (
     //"time"
 	"github.com/hpb-project/go-hpb/common/log"
 	"github.com/hpb-project/go-hpb/common/crypto"
-    "encoding/hex"
 )
 
 
@@ -212,9 +211,9 @@ func PostRecoverPubkey() {
             rs := RecoverPubkey{Hash:make([]byte, 32), Sig:make([]byte, 65), Pub:make([]byte, 65)}
 
             cArrayToGoArray(unsafe.Pointer(r.sig), fullsig, len(fullsig))
-            log.Info("got result", "fullsig:", hex.EncodeToString(fullsig))
+//            log.Info("got result", "fullsig:", hex.EncodeToString(fullsig))
             if r.flag == 0 {
-                log.Error("boe async callback recover pubkey success.")
+                //log.Error("boe async callback recover pubkey success.")
                 pubkey65 := make([]byte, 65)
                 cArrayToGoArray(unsafe.Pointer(r.pub), pubkey65, len(pubkey65))
                 copy(rs.Hash, fullsig[64:96])
@@ -408,16 +407,16 @@ func (boe *BoeHandle) ASyncValidateSign(hash []byte, r []byte, s []byte, v byte)
         m_sig  = make([]byte, 97)
         c_sig = (*C.uchar)(unsafe.Pointer(&m_sig[0]))
     )
-    log.Info("boe hanxiaole test ASyncValidateSign","hash",hex.EncodeToString(hash))
+
     copy(m_sig[32-len(r):32], r)
     copy(m_sig[64-len(s):64], s)
     copy(m_sig[96-len(hash):96], hash)
     m_sig[96] = v
-    log.Info("boe asyncValidateSign  sig: ", hex.EncodeToString(m_sig))
-    //log.Info("ASyncValidateSign hanxiaole test 111111111111111111111")
+//    log.Info("boe asyncValidateSign  sig: ", hex.EncodeToString(m_sig))
+
     c_ret := C.boe_valid_sign_recover_pub_async(c_sig)
     if c_ret == C.BOE_OK {
-        log.Error("boe async valid sign success")
+        //log.Error("boe async valid sign success")
         return nil
     }else {
         log.Error("boe async validate sign failed")
@@ -439,11 +438,11 @@ func (boe *BoeHandle) ValidateSign(hash []byte, r []byte, s []byte, v byte) ([]b
     copy(m_sig[96-len(hash):96], hash)
     m_sig[96] = v
 
-    log.Info("boe ----- syncValidateSign  sig: ", hex.EncodeToString(m_sig))
+    //log.Info("boe ----- syncValidateSign  sig: ", hex.EncodeToString(m_sig))
     c_ret := C.boe_valid_sign(c_sig, (*C.uchar)(unsafe.Pointer(&result[1])))
     //loushl change to debug
     if c_ret == C.BOE_OK {
-        log.Error("boe validate sign success")
+        //log.Error("boe validate sign success")
         result[0] = 4
         return result,nil
     }else {
