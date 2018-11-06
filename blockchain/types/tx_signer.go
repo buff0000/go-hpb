@@ -423,10 +423,10 @@ func SMapGetSendFlag(m *Smap, khash common.Hash) (bool,error){
 
 	kvalue,ok := m.SendFlag[khash]
 	if ok != true {
-		log.Info("SMapGetTxTime hash values is null","m.WaitsingerTxbeats[khash]",m.SendFlag[khash])
-		return false,errors.New("SMapGetTxTime hash values is null")
+		log.Info("SMapGetSendFlag hash values is null","m.WaitsingerTxbeats[khash]",m.SendFlag[khash])
+		return false,errors.New("SMapGetSendFlag hash values is null")
 	}
-	log.Info("hanxiaole test SMapGetTxTime input hash and kvalue","khash",khash,"kvalue",kvalue)
+	log.Info("hanxiaole test SMapGetSendFlag input hash and kvalue","khash",khash,"kvalue",kvalue)
 	return kvalue,nil
 }
 /*
