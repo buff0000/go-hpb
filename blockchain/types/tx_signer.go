@@ -106,16 +106,6 @@ func Sender(signer Signer, tx *Transaction) (common.Address, error) {
 }
 func ASynSender(signer Signer, tx *Transaction) (common.Address, error) {
 
-	log.Info("hanxiaole test SMapGet(Asynsinger,signer.Hash(tx))","signer.Hash(tx)",signer.Hash(tx),"tx.Hash()",tx.Hash())
-
-	asynAddress ,err:= SMapGetAddress(Asynsinger,signer.Hash(tx))
-	if err == nil{
-		log.Info("hanxiaole test ASynSender reASyn SMapGet()  ","common.Address",asynAddress,"signer.Hash(tx)",signer.Hash(tx),"tx.hash",tx.Hash())
-		/*SMapGet success and set SigCache value*/
-		tx.from.Store(SigCache{Casigner: signer, Cafrom: asynAddress})
-		return asynAddress,nil
-	}
-
 	log.Info("hanxiaole tx.from.Load()","tx.Hash()",tx.Hash(),"signer.Hash(tx)",signer.Hash(tx))
 	if sc := tx.from.Load(); sc != nil {
 		SigCache := sc.(SigCache)
@@ -127,6 +117,16 @@ func ASynSender(signer Signer, tx *Transaction) (common.Address, error) {
 			return SigCache.Cafrom, nil
 		}
 	}
+
+	log.Info("hanxiaole test SMapGet(Asynsinger,signer.Hash(tx))","signer.Hash(tx)",signer.Hash(tx),"tx.Hash()",tx.Hash())
+	asynAddress ,err:= SMapGetAddress(Asynsinger,signer.Hash(tx))
+	if err == nil{
+		log.Info("hanxiaole test ASynSender reASyn SMapGet()  ","common.Address",asynAddress,"signer.Hash(tx)",signer.Hash(tx),"tx.hash",tx.Hash())
+		/*SMapGet success and set SigCache value*/
+		//tx.from.Store(SigCache{Casigner: signer, Cafrom: asynAddress})
+		return asynAddress,nil
+	}
+
     /*先可取，无可发*/
 	sendFlag, errsend := SMapGetSendFlag(Asynsinger,signer.Hash(tx))
 	if sendFlag == true && errsend == nil{
@@ -388,8 +388,6 @@ func boecallback(rs boe.RecoverPubkey,err error) {
 
 }
 */
-
-
 
 func SMapGetAddress(m *Smap, khash common.Hash) (common.Address,error){
 	m.L.RLock()

@@ -232,17 +232,24 @@ func (pool *TxPool) chanAsynSingerloop() {
 				sigCache := sc.(types.SigCache)
 				tmpsigCache := types.SigCache{Casigner: sigCache.Casigner, Cafrom: addr}
 				log.Info("types.SigCache get values","addr",addr,"sigCache.Casigner",sigCache.Casigner)
-
+                /*set sigCache singer fromaddr*/
 				tx.SetFromSigCache(tmpsigCache)
 			}
+
+			/*delete map temp object*/
+			delete(types.Asynsinger.Data, comhash)
+			delete(types.Asynsinger.SendFlag, comhash)
+			delete(types.Asynsinger.WaitsingerTxbeats, comhash)
+			delete(types.Asynsinger.WaitsingerTx, comhash)
 
 			err1 := pool.AsynAddTx(tx)
 			if err1 != nil{
 				log.Info("AsynAddTx(tx) fail")
 				pool.chantransuccess[tx.Hash()] <- 4         /*4 交易失败*/
+			}else{
+				log.Info("AsynAddTx(tx) success")
+				pool.chantransuccess[tx.Hash()] <- 6             /*6 交易成功*/
 			}
-
-			pool.chantransuccess[tx.Hash()] <- 6             /*6 交易成功*/
 		}
 	}
 }
@@ -483,6 +490,8 @@ func (pool *TxPool) AddTxs(txs []*types.Transaction) error {
 func (pool *TxPool) AddTx(tx *types.Transaction) error {
 	//pool.mu.Lock()
 	//defer pool.mu.Unlock()
+	var t_start = time.Now().UnixNano()/1000
+
 
 	hash := tx.Hash()
 	if pool.all[hash] != nil {
@@ -499,17 +508,18 @@ func (pool *TxPool) AddTx(tx *types.Transaction) error {
 		log.Info("ASynSender Send SUCCESS", "from",from,"tx.hash",tx.Hash())
 		return err
 	}
-
 	/*等待此笔交易成功或失败的通知*/
-
 	select {
 	// Handle ChainHeadEvent
 	case result := <-ch:
 		if result == 6{
-			log.Info("交易成功","result",result,"from",from)
+
+			t_end := time.Now().UnixNano()/1000
+			log.Info("trans cost time ", " ", t_end-t_start, "us", ".")
+			log.Info("交易成功 trans success","result",result,"from",from)
 			return nil
 		}else {
-			log.Info("交易失败","result",result,"from",from)
+			log.Info("交易失败 trans fail","result",result,"from",from)
 			return ErrAsynError
 		}
 	}
