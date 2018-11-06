@@ -223,12 +223,16 @@ func (pool *TxPool) chanAsynSingerloop() {
 				log.Info("SMapGetTx error")
 				pool.chantransuccess[tx.Hash()] <- 7           /*7 验证失败*/
 			}
+            log.Info("SMapGetTx success","tx.hash",tx.Hash())
 
 			txfrom := tx.GetFromSigCache()
+            log.Info("GetFromSigCache txfrom 11111111111111111111")
 
 			if sc := txfrom.Load(); sc != nil {
 				sigCache := sc.(types.SigCache)
 				tmpsigCache := types.SigCache{Casigner: sigCache.Casigner, Cafrom: addr}
+				log.Info("types.SigCache get values","addr",addr,"sigCache.Casigner",sigCache.Casigner)
+
 				tx.SetFromSigCache(tmpsigCache)
 			}
 
@@ -493,18 +497,22 @@ func (pool *TxPool) AddTx(tx *types.Transaction) error {
 	from, err := types.ASynSender(pool.signer, tx)
 	if err != nil {
 		log.Info("ASynSender Send SUCCESS", "from",from,"tx.hash",tx.Hash())
-		select {
-		// Handle ChainHeadEvent
-		case result := <-ch:
-		     if result == 6{
-				 return nil
-			 }else {
-			 	return ErrAsynError
-			 }
-		}
+		return err
 	}
 
-	log.Info("hanxiaole test validateTx","from",from)
+	/*等待此笔交易成功或失败的通知*/
+
+	select {
+	// Handle ChainHeadEvent
+	case result := <-ch:
+		if result == 6{
+			log.Info("交易成功","result",result,"from",from)
+			return nil
+		}else {
+			log.Info("交易失败","result",result,"from",from)
+			return ErrAsynError
+		}
+	}
 	return nil
 }
 

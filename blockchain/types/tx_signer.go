@@ -33,7 +33,7 @@ import (
 
 var (
 	ErrInvalidChainId = errors.New("invalid chain id for signer")
-	ErrInvalidAsynsinger = errors.New("just callback Asyn Send OK for signer")
+	//ErrInvalidAsynsinger = errors.New("just callback Asyn Send OK for signer")
 )
 
 // SigCache is used to cache the derived sender and contains
@@ -107,11 +107,6 @@ func Sender(signer Signer, tx *Transaction) (common.Address, error) {
 func ASynSender(signer Signer, tx *Transaction) (common.Address, error) {
 
 	log.Info("hanxiaole test SMapGet(Asynsinger,signer.Hash(tx))","signer.Hash(tx)",signer.Hash(tx),"tx.Hash()",tx.Hash())
-	sendFlag, errsend := SMapGetSendFlag(Asynsinger,signer.Hash(tx))
-	if sendFlag == true && errsend == nil{
-		log.Info("重复发送!!!!!!!!!!!","signer.Hash(tx)",signer.Hash(tx),"tx.Hash()",tx.Hash())
-		return common.Address{}, errors.New("resend tx error")
-	}
 
 	asynAddress ,err:= SMapGetAddress(Asynsinger,signer.Hash(tx))
 	if err == nil{
@@ -131,6 +126,12 @@ func ASynSender(signer Signer, tx *Transaction) (common.Address, error) {
 			log.Info("hanxiaole test ASynSender reASyn tx.from.Load() OKOKOK ","SigCache.from",SigCache.Cafrom,"tx.Hash()",tx.Hash())
 			return SigCache.Cafrom, nil
 		}
+	}
+    /*先可取，无可发*/
+	sendFlag, errsend := SMapGetSendFlag(Asynsinger,signer.Hash(tx))
+	if sendFlag == true && errsend == nil{
+		log.Info("重复发送!!!!!!!!!!!","signer.Hash(tx)",signer.Hash(tx),"tx.Hash()",tx.Hash())
+		return common.Address{}, errors.New("resend tx error")
 	}
 
 	terr := SMapSetWaitsingerTx(Asynsinger,signer.Hash(tx),tx)
@@ -164,7 +165,7 @@ func ASynSender(signer Signer, tx *Transaction) (common.Address, error) {
 	if err != nil {
 		return common.Address{}, err
 	}
-	return addr, ErrInvalidAsynsinger
+	return addr, nil
 }
 // Signer encapsulates transaction signature handling. Note that this interface is not a
 // stable API and may change at any time to accommodate new protocol rules.
@@ -346,7 +347,7 @@ func ASynrecoverPlain(sighash common.Hash, R, S, Vb *big.Int) (common.Address, e
 		return common.Address{}, err
 	}
 	log.Info("ASynrecoverPlain ASynrecoverPlain hanxiaole end 444444444444444444444444")
-	return common.Address{}, ErrInvalidAsynsinger
+	return common.Address{}, nil
 }
 
 // deriveChainId derives the chain id from the given v parameter
@@ -464,7 +465,7 @@ func SMapSetAddress(m *Smap, khash common.Hash,kaddress common.Address) error {
 	if ok != true{
 		return errors.New("SMapSetAddress hash values is null")
 	}
-	log.Info("hanxiaole SMapSetAddress","SMapSetAddress from",fromAddress)
+	log.Info("hanxiaole SMapSetAddress","SMapSetAddress from",fromAddress,"hash",khash)
 	return nil
 }
 
