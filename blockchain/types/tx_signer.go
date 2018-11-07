@@ -56,7 +56,7 @@ type Smap struct {
 var (
 	//	Asynsinger = &Smap{Data:make(map[common.Hash]common.Address),WaitsingerTx:make(map[common.Hash]*types.Transaction),WaitsingerTxbeats:make(map[common.Hash]time.Time),SendFlag:make(map[common.Hash]bool),ChannelType:make(map[common.Hash]int)}
 	Asynsinger = &Smap{Data:make(map[common.Hash]common.Address),WaitsingerTx:make(map[common.Hash]*Transaction),WaitsingerTxbeats:make(map[common.Hash]time.Time),SendFlag:make(map[common.Hash]bool)}
-	ChanAsynsinger =  make(chan boe.RecoverPubkey)
+	ChanAsynsinger =  make(chan boe.RecoverResult)
 )
 
 
@@ -362,7 +362,7 @@ func deriveChainId(v *big.Int) *big.Int {
 	return v.Div(v, big.NewInt(2))
 }
 /*
-func boecallback(rs boe.RecoverPubkey,err error) {
+func boecallback(rs boe.RecoverResult,err error) {
 	if err != nil {
 		log.Trace("boe validatesign error")
 	}

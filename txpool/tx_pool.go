@@ -177,7 +177,7 @@ func (pool *TxPool) Stop() {
 	}
 }
 
-func boecallback(rs boe.RecoverPubkey,err error) {
+func boecallback(rs boe.RecoverResult,err error) {
 	if err != nil {
 		log.Trace("boe validatesign error")
 	}

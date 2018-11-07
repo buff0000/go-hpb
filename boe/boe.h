@@ -112,6 +112,7 @@ BoeErr* boe_get_s_random(unsigned char *hash, unsigned char *nexthash);
 typedef int (*BoeValidSignCallback)(unsigned char *pub, unsigned char *sig, void *userdata);
 BoeErr* boe_valid_sign(unsigned char *sig, unsigned char *pub);
 BoeErr* boe_valid_sign_recover_pub_async(unsigned char *sig);
+BoeErr* boe_valid_sign_recover_pub_async_us(unsigned char *sig, unsigned char *userdata);
 BoeErr* boe_valid_sign_callback(BoeValidSignCallback func);
 
 #endif  /*BOE_H*/

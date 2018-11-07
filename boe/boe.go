@@ -32,6 +32,7 @@ package boe
 typedef struct SResult{
     unsigned char *sig;
     unsigned char *pub;
+    unsigned char *udata;
     unsigned int  flag;
 }SResult;
 
@@ -41,6 +42,7 @@ SResult *rsNew()
     ret->sig = (unsigned char *)malloc(SIG_LEN);
     ret->pub = (unsigned char *)malloc(PUB_LEN+1);
     ret->flag = 0;
+    ret->udata = NULL;
     return ret;
 }
 
@@ -114,6 +116,7 @@ static void hex_dump(unsigned char * data, int len)
 int recover_pubkey_callback(unsigned char *pub, unsigned char *sig,void *userdata)
 {
     SResult *r = rsNew();
+    r->udata = (unsigned char *)userdata;
     if(sig)
     {
         //printf("%s: sig ", "recover_pubkey_callback");
@@ -160,13 +163,14 @@ type TVersion struct {
 }
 
 // result for recover pubkey
-type RecoverPubkey struct {
+type RecoverResult struct {
     Hash []byte
     Sig  []byte
     Pub  []byte
+    UData *byte
 }
 
-type BoeRecoverPubKeyFunc func (RecoverPubkey, error)
+type BoeRecoverPubKeyFunc func (RecoverResult, error)
 
 type BoeHandle struct {
     boeInit  bool
@@ -208,7 +212,8 @@ func PostRecoverPubkey() {
         }else {
             var fullsig = make([]byte, 97)
 
-            rs := RecoverPubkey{Hash:make([]byte, 32), Sig:make([]byte, 65), Pub:make([]byte, 65)}
+            rs := RecoverResult{Hash:make([]byte, 32), Sig:make([]byte, 65), Pub:make([]byte, 65)}
+            rs.UData = (*byte)(r.udata)
 
             cArrayToGoArray(unsafe.Pointer(r.sig), fullsig, len(fullsig))
 //            log.Info("got result", "fullsig:", hex.EncodeToString(fullsig))
@@ -399,6 +404,30 @@ func (boe *BoeHandle) HW_Auth_Verify(random []byte, hid []byte, cid[]byte, signa
         return true
     } 
     return false
+}
+
+func (boe *BoeHandle) ASyncValidateSignUs(hash []byte, r []byte, s []byte, v byte, udata *byte) (error) {
+
+    var (
+        m_sig  = make([]byte, 97)
+        c_sig = (*C.uchar)(unsafe.Pointer(&m_sig[0]))
+    )
+
+    copy(m_sig[32-len(r):32], r)
+    copy(m_sig[64-len(s):64], s)
+    copy(m_sig[96-len(hash):96], hash)
+    m_sig[96] = v
+//    log.Info("boe asyncValidateSign  sig: ", hex.EncodeToString(m_sig))
+
+    c_ret := C.boe_valid_sign_recover_pub_async_us(c_sig, (*C.uchar)(unsafe.Pointer(udata)))
+    if c_ret == C.BOE_OK {
+        //log.Error("boe async valid sign success")
+        return nil
+    }else {
+        log.Error("boe async validate sign failed")
+        fmt.Printf("error code = %d.\n", uint32(c_ret.ecode));
+    }
+    return ErrSignCheckFailed
 }
 
 func (boe *BoeHandle) ASyncValidateSign(hash []byte, r []byte, s []byte, v byte) (error) {
